@@ -204,3 +204,5 @@ Developed by [@subev](https://github.com/subev)
 ## Development
 
 You can develop this plugin directly in your lazy.nvim installation directory.
+
+For AI-assisted development, see [`.ai/instructions.md`](.ai/instructions.md) for comprehensive project context, architecture details, and development guidelines.
