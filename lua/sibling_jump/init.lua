@@ -1078,14 +1078,44 @@ function M.setup(opts)
 
   local next_key = opts.next_key or "<C-j>"
   local prev_key = opts.prev_key or "<C-k>"
+  local filetypes = opts.filetypes or nil -- Optional filetype restriction
 
-  vim.keymap.set("n", next_key, function()
-    M.jump_to_sibling({ forward = true })
-  end, { noremap = true, silent = true, desc = "Jump to next sibling node" })
+  -- Function to set buffer-local keymaps
+  local function set_keymaps(bufnr)
+    vim.keymap.set("n", next_key, function()
+      M.jump_to_sibling({ forward = true })
+    end, { buffer = bufnr, noremap = true, silent = true, desc = "Jump to next sibling node" })
 
-  vim.keymap.set("n", prev_key, function()
-    M.jump_to_sibling({ forward = false })
-  end, { noremap = true, silent = true, desc = "Jump to previous sibling node" })
+    vim.keymap.set("n", prev_key, function()
+      M.jump_to_sibling({ forward = false })
+    end, { buffer = bufnr, noremap = true, silent = true, desc = "Jump to previous sibling node" })
+  end
+
+  -- If filetypes are specified, use FileType autocommand for buffer-local keymaps
+  if filetypes then
+    vim.api.nvim_create_autocmd("FileType", {
+      pattern = filetypes,
+      callback = function(ev)
+        set_keymaps(ev.buf)
+      end,
+      desc = "Set sibling-jump keymaps for specific filetypes",
+    })
+    
+    -- Also set for current buffer if it matches
+    local current_ft = vim.bo.filetype
+    if current_ft and vim.tbl_contains(filetypes, current_ft) then
+      set_keymaps(0)
+    end
+  else
+    -- No filetype restriction: set global keymaps (original behavior)
+    vim.keymap.set("n", next_key, function()
+      M.jump_to_sibling({ forward = true })
+    end, { noremap = true, silent = true, desc = "Jump to next sibling node" })
+
+    vim.keymap.set("n", prev_key, function()
+      M.jump_to_sibling({ forward = false })
+    end, { noremap = true, silent = true, desc = "Jump to previous sibling node" })
+  end
 end
 
 return M
