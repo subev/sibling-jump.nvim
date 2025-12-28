@@ -200,3 +200,7 @@ MIT
 ## Credits
 
 Developed by [@subev](https://github.com/subev)
+
+## Development
+
+You can develop this plugin directly in your lazy.nvim installation directory.
