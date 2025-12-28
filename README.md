@@ -177,6 +177,18 @@ When you trigger a jump:
 3. Finds the next/previous sibling node in that context
 4. Jumps to it, staying within the same level of abstraction
 
+## Testing
+
+The plugin includes a comprehensive test suite with 86 tests covering all supported navigation scenarios.
+
+**Run tests:**
+```bash
+cd /path/to/sibling-jump.nvim
+bash tests/test_runner.sh
+```
+
+All tests pass with Tree-sitter support for TypeScript/JavaScript/JSX/TSX.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit issues or pull requests.
