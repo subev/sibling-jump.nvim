@@ -179,6 +179,33 @@ This configuration:
 - Creates buffer-local keymaps only for TS/JS files (`filetypes` option)
 - Keymaps won't interfere with other filetypes
 
+## Manual Buffer Control
+
+You can manually enable/disable sibling-jump for any buffer using these commands:
+
+```vim
+:SiblingJumpBufferEnable   " Enable for current buffer
+:SiblingJumpBufferDisable  " Disable for current buffer
+:SiblingJumpBufferToggle   " Toggle on/off for current buffer
+:SiblingJumpBufferStatus   " Check if enabled for current buffer
+```
+
+**Use cases:**
+- Testing the plugin in non-TS/JS files (Python, Lua, etc.)
+- Temporarily enabling for a specific file without changing config
+- Quick experiments with the plugin in different languages
+
+**Example:**
+```vim
+" Open a Python file
+:e script.py
+
+" Enable sibling-jump manually
+:SiblingJumpBufferEnable
+
+" Now <C-j> and <C-k> work in this buffer!
+```
+
 ## Requirements
 
 - Neovim >= 0.9.0 (requires Tree-sitter support)

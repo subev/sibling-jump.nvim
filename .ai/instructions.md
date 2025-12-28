@@ -131,10 +131,28 @@ For optimal performance and to avoid keymap conflicts, restrict the plugin to Ty
 - Keymaps only active in TS/JS buffers, avoiding conflicts with other filetypes
 - Without `filetypes` option, keymaps are global (original behavior, backward compatible)
 
+**Manual buffer control commands:**
+
+Users can manually enable/disable sibling-jump for any buffer:
+
+```vim
+:SiblingJumpBufferEnable   " Enable for current buffer
+:SiblingJumpBufferDisable  " Disable for current buffer  
+:SiblingJumpBufferToggle   " Toggle on/off for current buffer
+:SiblingJumpBufferStatus   " Check if enabled for current buffer
+```
+
+These commands are useful for:
+- Testing the plugin in non-TS/JS files (Python, Lua, etc.)
+- Temporarily enabling for specific files without changing config
+- Debugging and experimentation
+
 **Plugin behavior:**
 - Adds positions to jump list before moving (`m'`)
 - Supports vim counts (e.g., `3<C-j>` jumps 3 siblings forward)
 - Silent no-ops at boundaries (doesn't show errors)
+- Buffer state tracked via `enabled_buffers` table
+- Commands show notifications on success/failure
 
 ## Development Guidelines
 

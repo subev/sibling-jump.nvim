@@ -15,6 +15,15 @@ local config = {
   center_on_jump = false, -- Whether to center screen (zz) after each jump
 }
 
+-- Stored configuration for manual buffer enable/disable
+local stored_config = {
+  next_key = "<C-j>",
+  prev_key = "<C-k>",
+}
+
+-- Track which buffers have sibling-jump enabled
+local enabled_buffers = {}
+
 -- Check if node should be skipped (comments, empty nodes, punctuation)
 local function is_skippable_node(node)
   if not node then
@@ -1069,34 +1078,96 @@ function M.jump_to_sibling(opts)
   end
 end
 
+-- Enable sibling-jump for a specific buffer
+function M.enable_for_buffer(bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  
+  -- Check if already enabled
+  if enabled_buffers[bufnr] then
+    vim.notify("sibling-jump already enabled for this buffer", vim.log.levels.INFO)
+    return
+  end
+  
+  -- Set buffer-local keymaps
+  vim.keymap.set("n", stored_config.next_key, function()
+    M.jump_to_sibling({ forward = true })
+  end, { buffer = bufnr, noremap = true, silent = true, desc = "Jump to next sibling node" })
+
+  vim.keymap.set("n", stored_config.prev_key, function()
+    M.jump_to_sibling({ forward = false })
+  end, { buffer = bufnr, noremap = true, silent = true, desc = "Jump to previous sibling node" })
+  
+  -- Mark as enabled
+  enabled_buffers[bufnr] = true
+  
+  vim.notify("sibling-jump enabled for buffer " .. bufnr, vim.log.levels.INFO)
+end
+
+-- Disable sibling-jump for a specific buffer
+function M.disable_for_buffer(bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  
+  -- Check if not enabled
+  if not enabled_buffers[bufnr] then
+    vim.notify("sibling-jump not enabled for this buffer", vim.log.levels.WARN)
+    return
+  end
+  
+  -- Delete buffer-local keymaps
+  pcall(vim.keymap.del, "n", stored_config.next_key, { buffer = bufnr })
+  pcall(vim.keymap.del, "n", stored_config.prev_key, { buffer = bufnr })
+  
+  -- Mark as disabled
+  enabled_buffers[bufnr] = nil
+  
+  vim.notify("sibling-jump disabled for buffer " .. bufnr, vim.log.levels.INFO)
+end
+
+-- Toggle sibling-jump for a specific buffer
+function M.toggle_for_buffer(bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  
+  if enabled_buffers[bufnr] then
+    M.disable_for_buffer(bufnr)
+  else
+    M.enable_for_buffer(bufnr)
+  end
+end
+
+-- Check status of sibling-jump for a specific buffer
+function M.status_for_buffer(bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  
+  local status = enabled_buffers[bufnr] and "enabled" or "disabled"
+  local filetype = vim.api.nvim_buf_get_option(bufnr, "filetype")
+  
+  vim.notify(
+    string.format("sibling-jump: %s for buffer %d (filetype: %s)", status, bufnr, filetype),
+    vim.log.levels.INFO
+  )
+  
+  return enabled_buffers[bufnr] ~= nil
+end
+
 -- Setup function to configure keymaps
 function M.setup(opts)
   opts = opts or {}
 
+  -- Store configuration for manual buffer enable/disable
+  stored_config.next_key = opts.next_key or "<C-j>"
+  stored_config.prev_key = opts.prev_key or "<C-k>"
+  
   -- Update configuration
   config.center_on_jump = opts.center_on_jump ~= nil and opts.center_on_jump or false
 
-  local next_key = opts.next_key or "<C-j>"
-  local prev_key = opts.prev_key or "<C-k>"
   local filetypes = opts.filetypes or nil -- Optional filetype restriction
-
-  -- Function to set buffer-local keymaps
-  local function set_keymaps(bufnr)
-    vim.keymap.set("n", next_key, function()
-      M.jump_to_sibling({ forward = true })
-    end, { buffer = bufnr, noremap = true, silent = true, desc = "Jump to next sibling node" })
-
-    vim.keymap.set("n", prev_key, function()
-      M.jump_to_sibling({ forward = false })
-    end, { buffer = bufnr, noremap = true, silent = true, desc = "Jump to previous sibling node" })
-  end
 
   -- If filetypes are specified, use FileType autocommand for buffer-local keymaps
   if filetypes then
     vim.api.nvim_create_autocmd("FileType", {
       pattern = filetypes,
       callback = function(ev)
-        set_keymaps(ev.buf)
+        M.enable_for_buffer(ev.buf)
       end,
       desc = "Set sibling-jump keymaps for specific filetypes",
     })
@@ -1104,18 +1175,35 @@ function M.setup(opts)
     -- Also set for current buffer if it matches
     local current_ft = vim.bo.filetype
     if current_ft and vim.tbl_contains(filetypes, current_ft) then
-      set_keymaps(0)
+      M.enable_for_buffer(0)
     end
   else
     -- No filetype restriction: set global keymaps (original behavior)
-    vim.keymap.set("n", next_key, function()
+    vim.keymap.set("n", stored_config.next_key, function()
       M.jump_to_sibling({ forward = true })
     end, { noremap = true, silent = true, desc = "Jump to next sibling node" })
 
-    vim.keymap.set("n", prev_key, function()
+    vim.keymap.set("n", stored_config.prev_key, function()
       M.jump_to_sibling({ forward = false })
     end, { noremap = true, silent = true, desc = "Jump to previous sibling node" })
   end
+  
+  -- Create user commands for manual buffer control
+  vim.api.nvim_create_user_command("SiblingJumpBufferEnable", function()
+    M.enable_for_buffer()
+  end, { desc = "Enable sibling-jump for current buffer" })
+  
+  vim.api.nvim_create_user_command("SiblingJumpBufferDisable", function()
+    M.disable_for_buffer()
+  end, { desc = "Disable sibling-jump for current buffer" })
+  
+  vim.api.nvim_create_user_command("SiblingJumpBufferToggle", function()
+    M.toggle_for_buffer()
+  end, { desc = "Toggle sibling-jump for current buffer" })
+  
+  vim.api.nvim_create_user_command("SiblingJumpBufferStatus", function()
+    M.status_for_buffer()
+  end, { desc = "Check sibling-jump status for current buffer" })
 end
 
 return M
