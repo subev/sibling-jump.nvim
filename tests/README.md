@@ -1,6 +1,6 @@
-# Tests for statement_jump.lua
+# Tests for sibling_jump.lua
 
-This directory contains tests for the statement_jump navigation module.
+This directory contains tests for the sibling_jump navigation module.
 
 ## Test Fixtures
 
@@ -16,14 +16,14 @@ The `fixtures/` directory contains sample TypeScript/TSX files used for testing:
 ### Direct Test Runner (Recommended)
 
 ```bash
-cd /Users/petur/dotfiles
+cd /path/to/sibling-jump.nvim
 bash tests/test_runner.sh
 ```
 
 Or directly:
 
 ```bash
-cd /Users/petur/dotfiles
+cd /path/to/sibling-jump.nvim
 nvim --headless -c "luafile tests/run_tests.lua"
 ```
 
@@ -63,7 +63,7 @@ Our direct test runner (`run_tests.lua`) bypasses plenary and tests directly in 
 Successful run shows:
 
 ```
-=== Running statement_jump tests ===
+=== Running sibling_jump tests ===
 Testing: TypeScript properties: forward navigation ... ✓ PASS
 Testing: TypeScript properties: backward navigation ... ✓ PASS
 ...
@@ -79,7 +79,7 @@ test("Your test name", function()
   vim.cmd("edit tests/fixtures/your_file.ts")
   vim.api.nvim_win_set_cursor(0, {line, col})
   
-  statement_jump.jump_to_sibling({ forward = true })
+  sibling_jump.jump_to_sibling({ forward = true })
   local pos = vim.api.nvim_win_get_cursor(0)
   assert_eq(expected_line, pos[1], "Your assertion message")
 end)
@@ -102,7 +102,7 @@ The test suite can be run in CI:
 ```yaml
 - name: Run tests
   run: |
-    cd /path/to/dotfiles
+    cd /path/to/sibling-jump.nvim
     bash tests/test_runner.sh
 ```
 
