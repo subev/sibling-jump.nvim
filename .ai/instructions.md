@@ -102,12 +102,13 @@ require("sibling_jump").setup({
   next_key = "<C-j>",       -- Default: <C-j>
   prev_key = "<C-k>",       -- Default: <C-k>
   center_on_jump = false,   -- Default: false
+  filetypes = nil,          -- Default: nil (global keymaps). Set to table for buffer-local keymaps
 })
 ```
 
 **Recommended lazy.nvim configuration:**
 
-For optimal performance, restrict the plugin to TypeScript/JavaScript files only:
+For optimal performance and to avoid keymap conflicts, restrict the plugin to TypeScript/JavaScript files only:
 
 ```lua
 {
@@ -118,12 +119,17 @@ For optimal performance, restrict the plugin to TypeScript/JavaScript files only
       next_key = "<C-j>",
       prev_key = "<C-k>",
       center_on_jump = true,
+      filetypes = { "typescript", "javascript", "typescriptreact", "javascriptreact" },
     })
   end,
 }
 ```
 
-This ensures the plugin only loads for TS/JS files, avoiding conflicts with other filetypes and improving startup performance.
+**How it works:**
+- `ft` parameter ensures lazy loading (plugin only loads when you open a TS/JS file)
+- `filetypes` option creates **buffer-local** keymaps via FileType autocommand
+- Keymaps only active in TS/JS buffers, avoiding conflicts with other filetypes
+- Without `filetypes` option, keymaps are global (original behavior, backward compatible)
 
 **Plugin behavior:**
 - Adds positions to jump list before moving (`m'`)
