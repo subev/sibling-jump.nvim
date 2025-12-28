@@ -105,6 +105,26 @@ require("sibling_jump").setup({
 })
 ```
 
+**Recommended lazy.nvim configuration:**
+
+For optimal performance, restrict the plugin to TypeScript/JavaScript files only:
+
+```lua
+{
+  "subev/sibling-jump.nvim",
+  ft = { "typescript", "javascript", "typescriptreact", "javascriptreact" },
+  config = function()
+    require("sibling_jump").setup({
+      next_key = "<C-j>",
+      prev_key = "<C-k>",
+      center_on_jump = true,
+    })
+  end,
+}
+```
+
+This ensures the plugin only loads for TS/JS files, avoiding conflicts with other filetypes and improving startup performance.
+
 **Plugin behavior:**
 - Adds positions to jump list before moving (`m'`)
 - Supports vim counts (e.g., `3<C-j>` jumps 3 siblings forward)
