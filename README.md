@@ -148,8 +148,36 @@ require("sibling_jump").setup({
   
   -- Whether to center screen after each jump (default: false)
   center_on_jump = false,
+  
+  -- Optional: Restrict keymaps to specific filetypes (default: nil = global keymaps)
+  -- When set, creates buffer-local keymaps only for these filetypes
+  filetypes = { "typescript", "javascript", "typescriptreact", "javascriptreact" },
 })
 ```
+
+### Recommended Configuration for TypeScript/JavaScript
+
+To avoid keymap conflicts and improve performance, restrict the plugin to TS/JS files:
+
+```lua
+{
+  "subev/sibling-jump.nvim",
+  ft = { "typescript", "javascript", "typescriptreact", "javascriptreact" },
+  config = function()
+    require("sibling_jump").setup({
+      next_key = "<C-j>",
+      prev_key = "<C-k>",
+      center_on_jump = true,
+      filetypes = { "typescript", "javascript", "typescriptreact", "javascriptreact" },
+    })
+  end,
+}
+```
+
+This configuration:
+- Lazy loads the plugin only when opening TS/JS files (`ft` parameter)
+- Creates buffer-local keymaps only for TS/JS files (`filetypes` option)
+- Keymaps won't interfere with other filetypes
 
 ## Requirements
 
