@@ -1079,12 +1079,16 @@ function M.jump_to_sibling(opts)
 end
 
 -- Enable sibling-jump for a specific buffer
-function M.enable_for_buffer(bufnr)
+function M.enable_for_buffer(bufnr, opts)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
+  opts = opts or {}
+  local silent = opts.silent or false
   
   -- Check if already enabled
   if enabled_buffers[bufnr] then
-    vim.notify("sibling-jump already enabled for this buffer", vim.log.levels.INFO)
+    if not silent then
+      vim.notify("sibling-jump already enabled for this buffer", vim.log.levels.INFO)
+    end
     return
   end
   
@@ -1100,16 +1104,22 @@ function M.enable_for_buffer(bufnr)
   -- Mark as enabled
   enabled_buffers[bufnr] = true
   
-  vim.notify("sibling-jump enabled for buffer " .. bufnr, vim.log.levels.INFO)
+  if not silent then
+    vim.notify("sibling-jump enabled for buffer " .. bufnr, vim.log.levels.INFO)
+  end
 end
 
 -- Disable sibling-jump for a specific buffer
-function M.disable_for_buffer(bufnr)
+function M.disable_for_buffer(bufnr, opts)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
+  opts = opts or {}
+  local silent = opts.silent or false
   
   -- Check if not enabled
   if not enabled_buffers[bufnr] then
-    vim.notify("sibling-jump not enabled for this buffer", vim.log.levels.WARN)
+    if not silent then
+      vim.notify("sibling-jump not enabled for this buffer", vim.log.levels.WARN)
+    end
     return
   end
   
@@ -1120,7 +1130,9 @@ function M.disable_for_buffer(bufnr)
   -- Mark as disabled
   enabled_buffers[bufnr] = nil
   
-  vim.notify("sibling-jump disabled for buffer " .. bufnr, vim.log.levels.INFO)
+  if not silent then
+    vim.notify("sibling-jump disabled for buffer " .. bufnr, vim.log.levels.INFO)
+  end
 end
 
 -- Toggle sibling-jump for a specific buffer
@@ -1167,7 +1179,7 @@ function M.setup(opts)
     vim.api.nvim_create_autocmd("FileType", {
       pattern = filetypes,
       callback = function(ev)
-        M.enable_for_buffer(ev.buf)
+        M.enable_for_buffer(ev.buf, { silent = true })
       end,
       desc = "Set sibling-jump keymaps for specific filetypes",
     })
@@ -1175,7 +1187,7 @@ function M.setup(opts)
     -- Also set for current buffer if it matches
     local current_ft = vim.bo.filetype
     if current_ft and vim.tbl_contains(filetypes, current_ft) then
-      M.enable_for_buffer(0)
+      M.enable_for_buffer(0, { silent = true })
     end
   else
     -- No filetype restriction: set global keymaps (original behavior)
