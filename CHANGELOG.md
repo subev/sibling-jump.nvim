@@ -1,5 +1,122 @@
 # Changelog: statement_jump.lua
 
+## 2025-12-29 - Bug Fix: JSX Conditional Expressions Not Navigable
+
+### Issue
+Navigation would get stuck when encountering JSX conditional expressions, preventing navigation to subsequent JSX elements. Specifically, expressions like `{registered && <Component />}`, `{condition ? <A /> : <B />}`, `{items.map(...)}`, and plain value expressions like `{userName}` were not recognized as navigable siblings.
+
+**Example from real code:**
+```tsx
+<DiscoveryFooterButton />           {/* Line 149 - cursor here */}
+<PlayFooterButton />                {/* Line 153 - <C-j> works */}
+{registered && (                    {/* Line 161 - <C-j> works but gets stuck here */}
+  <ProfileFooterButton />
+)}
+{!registered && (                   {/* Line 167 - UNREACHABLE before fix! */}
+  <LoginFooterButton />
+)}
+<span className={...}></span>       {/* Line 173 - UNREACHABLE before fix! */}
+```
+
+**Problem:** After reaching line 161, pressing `<C-j>` would do nothing (no-op). Lines 167 and 173 were unreachable.
+
+### Root Cause
+The `jsx_expression` node type was missing from the `meaningful_types` list. Tree-sitter parses all JavaScript expressions embedded in JSX using `{...}` as `jsx_expression` nodes, including:
+- Conditional rendering: `{condition && <Component />}`
+- Ternary operators: `{flag ? <A /> : <B />}`
+- Map operations: `{items.map(item => <Item />)}`
+- Function calls: `{renderContent()}`
+- Plain values: `{userName}`, `{count}`
+
+Without `jsx_expression` in the meaningful types, these nodes were invisible to the navigation algorithm, causing the cursor to get trapped.
+
+### Fix
+**Added `jsx_expression` to meaningful node types:**
+- **File:** `lua/sibling_jump/init.lua`
+- **Location:** Line 160 (in the `meaningful_types` table)
+- **Change:** Added `"jsx_expression"` with comment explaining its purpose
+
+This single-line addition makes all JSX expressions navigable, allowing proper navigation through:
+- Conditional rendering with `&&` operator
+- Ternary expressions with `? :`
+- Array mapping with `.map()`
+- Function calls returning JSX
+- Plain value expressions
+- Any other JavaScript expressions in JSX
+
+### Changes
+```lua
+-- JSX/TSX
+"jsx_self_closing_element", -- Self-closing JSX like <div />
+"jsx_element", -- JSX elements like <div>...</div>
+"jsx_attribute", -- JSX attributes like visible={true}
+"jsx_expression", -- JSX expressions like {condition && <Component />}  ← NEW
+```
+
+### Test Coverage
+**Added 11 new tests** covering all JSX expression scenarios:
+
+1. **Basic Conditionals:**
+   - Forward navigation through `&&` conditionals
+   - Backward navigation through `&&` conditionals
+   - Multiple consecutive conditionals
+
+2. **Ternary Expressions:**
+   - Navigation through `? :` operators
+   - Bidirectional navigation
+
+3. **Parenthesized Expressions:**
+   - Wrapped conditionals: `{condition && (<Component />)}`
+
+4. **Map Operations:**
+   - Array `.map()` expressions in JSX
+
+5. **Function Calls:**
+   - Function calls that return JSX: `{renderContent()}`
+
+6. **Plain Value Expressions:**
+   - Simple value interpolation: `{title}`, `{userName}`
+   - Mixed with JSX elements
+
+7. **Complex Nested Conditionals:**
+   - Optional chaining: `{user?.isAdmin && <Component />}`
+   - Multiple conditions: `{count > 0 && count < 10 && <Component />}`
+   - Nested ternaries with parentheses
+
+8. **Boundary Tests:**
+   - No-op at first element before conditionals
+   - No-op at last element after conditionals
+
+**Test Files:**
+- **New fixtures:** `tests/fixtures/jsx_conditionals.tsx` and `tests/fixtures/jsx_conditionals.jsx`
+- **Updated:** `tests/run_tests.lua` (lines 1021-1210)
+- **Results:** All 97 tests pass (86 original + 11 new)
+
+### Verification
+**Automated tests:**
+```bash
+bash tests/test_runner.sh
+# Results: 97 passed, 0 failed
+```
+
+**Manual verification with real file:**
+Navigation flow in Footer.tsx now works correctly:
+1. Line 149 (`<DiscoveryFooterButton />`) → Press `<C-j>`
+2. Line 153 (`<PlayFooterButton />`) → Press `<C-j>`
+3. Line 161 (`{registered && (`) → Press `<C-j>` ✅ **Now works!**
+4. Line 167 (`{!registered && (`) → Press `<C-j>` ✅ **Now reachable!**
+5. Line 173 (`<span>`) ✅ **Now reachable!**
+
+### Impact
+- ✅ Fixes navigation through all JSX conditional expressions
+- ✅ Fixes navigation through map operations
+- ✅ Fixes navigation through function call expressions
+- ✅ Makes plain value expressions navigable
+- ✅ No breaking changes to existing functionality
+- ✅ All existing tests continue to pass
+
+---
+
 ## 2025-12-27 - Test Suite: Solid, Reliable Test Coverage
 
 ### Achievement

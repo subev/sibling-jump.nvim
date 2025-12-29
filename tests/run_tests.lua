@@ -1018,5 +1018,195 @@ test("If-else chains: nested if inside block uses regular navigation", function(
   assert_eq(64, pos[1], "Should jump to inner if (L64), not exit to outer else")
 end)
 
+-- JSX conditionals and expressions
+test("JSX conditionals: forward through conditional expressions", function()
+  vim.cmd("edit tests/fixtures/jsx_conditionals.tsx")
+  
+  -- Start at Header (line 8)
+  vim.api.nvim_win_set_cursor(0, {8, 8})
+  
+  -- Jump to {registered && <ConditionalComponent />} (line 9)
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(9, pos[1], "Should jump from Header (L8) to conditional expression (L9)")
+  
+  -- Jump to {!registered && <AlternativeComponent />} (line 10)
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(10, pos[1], "Should jump from first conditional (L9) to second conditional (L10)")
+end)
+
+test("JSX conditionals: backward through conditional expressions", function()
+  vim.cmd("edit tests/fixtures/jsx_conditionals.tsx")
+  
+  -- Start at {!registered && <AlternativeComponent />} (line 10)
+  vim.api.nvim_win_set_cursor(0, {10, 8})
+  
+  -- Jump backward to {registered && <ConditionalComponent />} (line 9)
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(9, pos[1], "Should jump from second conditional (L10) to first conditional (L9)")
+  
+  -- Jump backward to Header (line 8)
+  sibling_jump.jump_to_sibling({ forward = false })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(8, pos[1], "Should jump from conditional (L9) to Header (L8)")
+end)
+
+test("JSX conditionals: multiple consecutive conditionals", function()
+  vim.cmd("edit tests/fixtures/jsx_conditionals.tsx")
+  
+  -- Start at {registered && <ConditionalComponent />} (line 9)
+  vim.api.nvim_win_set_cursor(0, {9, 8})
+  
+  -- Jump forward through all conditionals
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(10, pos[1], "Should jump to line 10")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(11, pos[1], "Should jump to ternary expression (L11)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(12, pos[1], "Should jump to wrapped conditional (L12)")
+end)
+
+test("JSX conditionals: ternary expressions", function()
+  vim.cmd("edit tests/fixtures/jsx_conditionals.tsx")
+  
+  -- Start at {!registered && ...} (line 10)
+  vim.api.nvim_win_set_cursor(0, {10, 8})
+  
+  -- Jump to ternary expression (line 11)
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(11, pos[1], "Should jump to ternary expression (L11)")
+  
+  -- Jump backward to verify it works both ways
+  sibling_jump.jump_to_sibling({ forward = false })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(10, pos[1], "Should jump back to line 10")
+end)
+
+test("JSX conditionals: parenthesized conditional expressions", function()
+  vim.cmd("edit tests/fixtures/jsx_conditionals.tsx")
+  
+  -- Start at ternary (line 11)
+  vim.api.nvim_win_set_cursor(0, {11, 8})
+  
+  -- Jump to parenthesized conditional (line 12)
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(12, pos[1], "Should jump to parenthesized conditional (L12)")
+end)
+
+test("JSX conditionals: map expressions", function()
+  vim.cmd("edit tests/fixtures/jsx_conditionals.tsx")
+  
+  -- Start at wrapped conditional (line 12)
+  vim.api.nvim_win_set_cursor(0, {12, 8})
+  
+  -- Jump to map expression (line 15)
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(15, pos[1], "Should jump to map expression (L15)")
+end)
+
+test("JSX conditionals: function call expressions", function()
+  vim.cmd("edit tests/fixtures/jsx_conditionals.tsx")
+  
+  -- Start at map expression (line 15)
+  vim.api.nvim_win_set_cursor(0, {15, 8})
+  
+  -- Jump to function call expression (line 16)
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(16, pos[1], "Should jump to function call expression (L16)")
+  
+  -- Jump to Footer (line 17)
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(17, pos[1], "Should jump to Footer (L17)")
+end)
+
+test("JSX conditionals: no-op at first element", function()
+  vim.cmd("edit tests/fixtures/jsx_conditionals.tsx")
+  
+  -- Start at Header (line 8)
+  vim.api.nvim_win_set_cursor(0, {8, 8})
+  local initial_pos = vim.api.nvim_win_get_cursor(0)
+  
+  -- Try to jump backward (should be no-op)
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(initial_pos[1], pos[1], "Should not move from first element")
+end)
+
+test("JSX conditionals: no-op at last element", function()
+  vim.cmd("edit tests/fixtures/jsx_conditionals.tsx")
+  
+  -- Start at Footer (line 17)
+  vim.api.nvim_win_set_cursor(0, {17, 8})
+  local initial_pos = vim.api.nvim_win_get_cursor(0)
+  
+  -- Try to jump forward (should be no-op)
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(initial_pos[1], pos[1], "Should not move from last element")
+end)
+
+test("JSX conditionals: plain value expressions", function()
+  vim.cmd("edit tests/fixtures/jsx_conditionals.tsx")
+  
+  -- Start at Header in PlainValueExpressions (line 53)
+  vim.api.nvim_win_set_cursor(0, {53, 8})
+  
+  -- Jump to {title} (line 54)
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(54, pos[1], "Should jump to {title} expression (L54)")
+  
+  -- Jump to <Content /> (line 55)
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(55, pos[1], "Should jump to Content component (L55)")
+  
+  -- Jump to {userName} (line 56)
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(56, pos[1], "Should jump to {userName} expression (L56)")
+  
+  -- Jump to <Footer /> (line 57)
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(57, pos[1], "Should jump to Footer component (L57)")
+end)
+
+test("JSX conditionals: complex nested conditionals", function()
+  vim.cmd("edit tests/fixtures/jsx_conditionals.tsx")
+  
+  -- Start at ComponentA in ComplexConditionals (line 33)
+  vim.api.nvim_win_set_cursor(0, {33, 8})
+  
+  -- Jump through complex conditionals
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(34, pos[1], "Should jump to optional chaining conditional (L34)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(35, pos[1], "Should jump to range conditional (L35)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(36, pos[1], "Should jump to ternary with parentheses (L36)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(41, pos[1], "Should jump to ComponentB (L41)")
+end)
+
 -- Run all tests
 run_tests()

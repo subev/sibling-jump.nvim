@@ -157,6 +157,7 @@ local function is_meaningful_node(node)
     "jsx_self_closing_element", -- Self-closing JSX like <div />
     "jsx_element", -- JSX elements like <div>...</div>
     "jsx_attribute", -- JSX attributes like visible={true}
+    "jsx_expression", -- JSX expressions like {condition && <Component />}
 
     -- Destructuring
     "shorthand_property_identifier_pattern", -- For destructured properties like `{ tab, setTab }`
