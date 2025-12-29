@@ -1208,5 +1208,37 @@ test("JSX conditionals: complex nested conditionals", function()
   assert_eq(41, pos[1], "Should jump to ComponentB (L41)")
 end)
 
+-- Single statement inside if block
+test("Single statement in if: no-op when navigating from inside", function()
+  vim.cmd("edit tests/fixtures/single_statement_in_if.ts")
+  
+  -- Start at return statement inside if block (line 9)
+  vim.api.nvim_win_set_cursor(0, {9, 4})
+  local initial_pos = vim.api.nvim_win_get_cursor(0)
+  
+  -- Try to jump backward (should be no-op - no siblings inside the if block)
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(initial_pos[1], pos[1], "Should not jump to statement before if when inside if block with single statement")
+  
+  -- Try to jump forward (should also be no-op)
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(initial_pos[1], pos[1], "Should not jump when inside if block with single statement")
+end)
+
+test("Single statement in if: complex case from real code", function()
+  vim.cmd("edit tests/fixtures/single_statement_in_if.ts")
+  
+  -- Start at return statement in complex case (line 19)
+  vim.api.nvim_win_set_cursor(0, {19, 4})
+  local initial_pos = vim.api.nvim_win_get_cursor(0)
+  
+  -- Try to jump backward (should be no-op)
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(initial_pos[1], pos[1], "Should not jump to const before if when inside if block")
+end)
+
 -- Run all tests
 run_tests()

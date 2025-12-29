@@ -434,6 +434,9 @@ local function get_node_at_cursor(bufnr)
               -- If there are multiple meaningful statements, prefer statement navigation
               if meaningful_count > 1 then
                 return test_node, test_parent
+              else
+                -- Single statement in block - no-op (don't navigate outside the block)
+                return nil, "Single statement in block - would exit context"
               end
             end
           end

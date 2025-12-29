@@ -1,5 +1,73 @@
 # Changelog: statement_jump.lua
 
+## 2025-12-30 - Bug Fix: Navigation Escapes Single Statement in If Block
+
+### Issue
+When cursor was positioned on a single statement inside an if block (or any other control structure), pressing `<C-k>` would incorrectly jump to the statement before the if block instead of being a no-op.
+
+**Example from real code:**
+```typescript
+const isExitPopupOpen = currentPopup?.id === "game-exit-confirm";  // Line 288
+if (isExitPopupOpen) {                                             // Line 289
+  return false;  // Line 290 - cursor here, pressing <C-k> incorrectly jumps to line 288
+}
+```
+
+**Problem:** Pressing `<C-k>` from line 290 would jump to line 288 instead of being a no-op (since there are no siblings within the if block).
+
+### Root Cause
+The navigation logic in `get_node_at_cursor()` checks if the cursor is inside a `statement_block` and counts meaningful children. When there are **multiple statements** (> 1), it correctly returns that context for navigation. However, when there is only **one statement** in the block, the code fell through without returning, causing it to continue walking up the tree and eventually finding the parent function's statement block, incorrectly navigating between statements at that higher level.
+
+### Fix
+Added an `else` clause to return `nil` when there's a single statement in a statement_block, preventing navigation from escaping the block:
+
+```lua
+if meaningful_count > 1 then
+  return test_node, test_parent
+else
+  -- Single statement in block - no-op (don't navigate outside the block)
+  return nil, "Single statement in block - would exit context"
+end
+```
+
+**File:** `lua/sibling_jump/init.lua`  
+**Location:** Lines 435-440
+
+### Changes
+- Added proper handling for single statements in statement blocks
+- Prevents navigation from escaping the current control structure context
+- Maintains no-op behavior when there are no siblings to navigate to
+
+### Test Coverage
+**Added 2 new tests:**
+1. "Single statement in if: no-op when navigating from inside" - Tests basic case
+2. "Single statement in if: complex case from real code" - Tests the exact reported scenario
+
+**New fixture:** `tests/fixtures/single_statement_in_if.ts`
+
+**Results:** All 99 tests pass (97 original + 2 new)
+
+### Verification
+**Automated tests:**
+```bash
+bash tests/test_runner.sh
+# Results: 99 passed, 0 failed
+```
+
+**Manual verification:**
+In the reported file (GamePage.tsx), navigation now correctly behaves as no-op:
+- Line 290 (`return false;` inside if block) → Press `<C-k>` → Cursor stays at line 290 ✅
+- Previously would incorrectly jump to line 288 ❌
+
+### Impact
+- ✅ Fixes navigation escaping from if blocks with single statements
+- ✅ Applies to all control structures (if, while, for, etc.)
+- ✅ Maintains correct no-op behavior within block boundaries
+- ✅ No breaking changes to existing functionality
+- ✅ All existing tests continue to pass
+
+---
+
 ## 2025-12-29 - Bug Fix: JSX Conditional Expressions Not Navigable
 
 ### Issue
