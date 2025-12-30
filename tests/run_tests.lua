@@ -1413,5 +1413,51 @@ test("Switch cases: nested switch inner navigation", function()
   assert_eq(89, pos[1], "Should jump to inner default")
 end)
 
+test("Switch cases: navigate object properties in return statement", function()
+  vim.cmd("edit tests/fixtures/switch_cases.ts")
+  
+  -- Start at title property in case "signup" (line 134)
+  vim.api.nvim_win_set_cursor(0, {134, 8})
+  
+  -- Jump to subtitle property (line 135)
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(135, pos[1], "Should jump between object properties, not to next case")
+  
+  -- Jump to showIcon (line 136)
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(136, pos[1], "Should continue navigating object properties")
+end)
+
+test("Switch cases: navigate backward in object literal without escaping to prev case", function()
+  vim.cmd("edit tests/fixtures/switch_cases.ts")
+  
+  -- Start at subtitle property in case "login" (line 146)
+  vim.api.nvim_win_set_cursor(0, {146, 8})
+  
+  -- Jump backward to title (line 145)
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(145, pos[1], "Should jump backward between properties, not to previous case")
+end)
+
+test("Switch cases: navigate nested object in return statement", function()
+  vim.cmd("edit tests/fixtures/switch_cases.ts")
+  
+  -- Start at primaryButton property (line 135)
+  vim.api.nvim_win_set_cursor(0, {135, 8})
+  
+  -- Jump inside primaryButton object to text property (line 136)
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(136, pos[1], "Should navigate into nested object properties")
+  
+  -- Jump to action property (line 137)
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(137, pos[1], "Should navigate between nested object properties")
+end)
+
 -- Run all tests
 run_tests()

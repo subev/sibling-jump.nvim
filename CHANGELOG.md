@@ -1,5 +1,49 @@
 # Changelog: statement_jump.lua
 
+## 2025-12-30 - Fix: Switch Case Navigation Respects Object Property Context
+
+### Issue
+Switch case navigation was interfering with object property navigation when navigating inside object literals within switch cases. This caused the cursor to jump to the next/previous case instead of navigating between object properties.
+
+**Example from real code:**
+```typescript
+switch (type) {
+  case "signup":
+    return {
+      title: "Welcome!",        // ← cursor here, press <C-j>
+      subtitle: "Let's start",  // Should jump here
+      showIcon: true,
+    };
+  case "login":                 // Was incorrectly jumping here instead
+    return { ... };
+}
+```
+
+### Fix
+Enhanced `is_in_switch_case()` to check for higher-priority navigation contexts before enabling switch case navigation. Now detects and defers to:
+- Object property navigation (objects and object_type)
+- Array element navigation
+- Function parameter/argument navigation
+
+These contexts take precedence over switch case navigation, ensuring proper navigation within nested structures inside switch cases.
+
+### Test Coverage
+**Added 3 comprehensive tests:**
+1. Navigate object properties in return statement within case
+2. Navigate backward in object literal without escaping to previous case
+3. Navigate nested object properties within case
+
+**Results:** All 112 tests pass (109 original + 3 new)
+
+### Impact
+- ✅ Fixes object property navigation inside switch cases
+- ✅ Fixes array navigation inside switch cases
+- ✅ Fixes parameter navigation inside switch cases
+- ✅ Proper context precedence handling
+- ✅ All existing tests continue to pass
+
+---
+
 ## 2025-12-30 - Feature: Switch Case Navigation
 
 ### Overview

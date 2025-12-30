@@ -983,10 +983,27 @@ local function is_in_switch_case(node)
     return false, nil, 0
   end
   
-  -- FIRST: Check if we're a meaningful statement inside a switch_case/switch_default
-  -- with multiple sibling statements. If so, prefer statement navigation over case navigation.
+  -- FIRST: Check if we're inside a higher-priority navigation context
+  -- These contexts take precedence over switch case navigation
   local test_node = node
   while test_node do
+    local node_type = test_node:type()
+    
+    -- If we're inside an object literal, prefer object property navigation
+    if node_type == "object" or node_type == "object_type" then
+      return false, nil, 0
+    end
+    
+    -- If we're inside an array, prefer array element navigation
+    if node_type == "array" then
+      return false, nil, 0
+    end
+    
+    -- If we're inside function parameters/arguments, prefer parameter navigation
+    if node_type == "arguments" or node_type == "formal_parameters" then
+      return false, nil, 0
+    end
+    
     if is_meaningful_node(test_node) then
       local test_parent = test_node:parent()
       

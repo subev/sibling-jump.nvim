@@ -123,3 +123,41 @@ function noDefault(value) {
   
   const after = 14;
 }
+
+// Switch with object literals in return statements
+function objectLiterals(type, username) {
+  const before = 15;
+  
+  switch (type) {
+    case "signup":
+      return {
+        title: `Welcome, ${username}!`,
+        subtitle: "Let's get started",
+        showIcon: true,
+        primaryButton: {
+          text: "Continue",
+          action: "next",
+        },
+      };
+    
+    case "login":
+      return {
+        title: `Welcome back, ${username}!`,
+        subtitle: "We restored your progress",
+        showIcon: false,
+        showAvatar: true,
+        primaryButton: {
+          text: "Got it",
+          action: "close",
+        },
+      };
+    
+    default:
+      return {
+        title: "Welcome",
+        subtitle: "Get started",
+      };
+  }
+  
+  const after = 16;
+}
