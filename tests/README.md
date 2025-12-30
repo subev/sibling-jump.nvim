@@ -4,12 +4,23 @@ This directory contains tests for the sibling_jump navigation module.
 
 ## Test Fixtures
 
-The `fixtures/` directory contains sample TypeScript/TSX files used for testing:
+The `fixtures/` directory contains sample files used for testing:
 
+### TypeScript/TSX/JavaScript/JSX
 - **type_properties.ts** - TypeScript type properties (L4→L5→L6 scenario)
 - **jsx_elements.tsx** - JSX element navigation (L5→L9→L13→L16 scenarios)
 - **destructuring.ts** - Destructured property navigation (L5→L6→L7 scenario)
 - **statements.ts** - Basic statement navigation (L3→L4→L5 scenario)
+- And many more...
+
+### Lua
+- **lua_statements.lua** - Basic Lua statement navigation (L5→L6→L7)
+- **lua_function.lua** - Complex function with nested if/else blocks
+
+### Multi-Language (Basic Coverage)
+- **Test.java** - Java local variable declarations
+- **test.c** - C declarations and statements
+- **test.cs** - C# local declarations
 
 ## Running Tests
 
@@ -35,7 +46,7 @@ Our direct test runner (`run_tests.lua`) bypasses plenary and tests directly in 
 
 ## Test Coverage
 
-### ✅ All 13 Tests Pass
+### ✅ All 121 Tests Pass
 
 1. **TypeScript Type Properties**
    - ✅ Forward navigation (L4→L5)

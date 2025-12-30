@@ -184,7 +184,22 @@ local function is_meaningful_node(node)
 
     -- Lua
     "assignment_statement",
-    "function_call_statement",
+    "function_call",            -- FIX: was incorrectly function_call_statement
+    "function_declaration",     -- Function declarations
+    "function_definition",      -- Anonymous functions
+    "repeat_statement",         -- repeat-until loops
+    "do_statement",             -- do-end blocks
+    "elseif_clause",            -- elseif branches
+
+    -- Java
+    "local_variable_declaration", -- Local variables in methods
+    "field_declaration",          -- Class fields
+
+    -- C/C++
+    "declaration",                -- Variable declarations
+
+    -- C#
+    "local_declaration_statement", -- Local variables
   }
 
   for _, type_name in ipairs(meaningful_types) do
@@ -237,7 +252,9 @@ local function get_node_at_cursor(bufnr)
   -- Special case: if we're on a container node (like statement_block, object, etc.)
   -- where cursor is on whitespace/between children, find the closest meaningful child
   local container_types = {
-    ["statement_block"] = true,
+    ["statement_block"] = true,     -- JS/TS function bodies
+    ["block"] = true,                -- Lua/Java/C# function bodies
+    ["compound_statement"] = true,   -- C/C++ function bodies
     ["object"] = true,
     ["object_type"] = true,
     ["array"] = true,

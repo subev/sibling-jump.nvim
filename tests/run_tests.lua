@@ -1485,5 +1485,104 @@ test("Switch cases: return statement should not jump forward to next case", func
   assert_eq(initial_pos[1], pos[1], "Should not jump to next case from single return statement")
 end)
 
+-- ============================================================================
+-- LUA TESTS (Critical Coverage)
+-- ============================================================================
+
+test("Lua statements: forward navigation", function()
+  vim.cmd("edit tests/fixtures/lua_statements.lua")
+  vim.api.nvim_win_set_cursor(0, { 5, 2 })
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(6, pos[1], "Should jump from local a (L5) to local b (L6)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(7, pos[1], "Should jump from local b (L6) to local c (L7)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(9, pos[1], "Should jump from local c (L7) to if statement (L9)")
+end)
+
+test("Lua statements: backward navigation", function()
+  vim.cmd("edit tests/fixtures/lua_statements.lua")
+  vim.api.nvim_win_set_cursor(0, { 6, 2 })
+
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(5, pos[1], "Should jump from local b (L6) to local a (L5)")
+end)
+
+test("Lua function: statements inside if block", function()
+  vim.cmd("edit tests/fixtures/lua_function.lua")
+  vim.api.nvim_win_set_cursor(0, { 15, 4 })
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(22, pos[1], "Should jump from create_autocmd (L15) to current_ft declaration (L22)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(23, pos[1], "Should jump from current_ft (L22) to if statement (L23)")
+end)
+
+test("Lua function: statements inside else block", function()
+  vim.cmd("edit tests/fixtures/lua_function.lua")
+  vim.api.nvim_win_set_cursor(0, { 27, 4 })
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(31, pos[1], "Should jump between vim.keymap.set calls (L27→L31)")
+end)
+
+-- ============================================================================
+-- JAVA TESTS (Basic Support)
+-- ============================================================================
+
+test("Java: local variable declarations", function()
+  vim.cmd("edit tests/fixtures/Test.java")
+  vim.api.nvim_win_set_cursor(0, { 7, 8 })  -- at int a
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(8, pos[1], "Should jump from int a (L7) to int b (L8)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(9, pos[1], "Should jump from int b (L8) to int c (L9)")
+end)
+
+-- ============================================================================
+-- C TESTS (Basic Support)
+-- ============================================================================
+
+test("C: declarations and statements", function()
+  vim.cmd("edit tests/fixtures/test.c")
+  vim.api.nvim_win_set_cursor(0, { 2, 4 })  -- at int a
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(3, pos[1], "Should jump from int a (L2) to int b (L3)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(4, pos[1], "Should jump from int b (L3) to int c (L4)")
+end)
+
+-- ============================================================================
+-- C# TESTS (Basic Support)
+-- ============================================================================
+
+test("C#: local declarations", function()
+  vim.cmd("edit tests/fixtures/test.cs")
+  vim.api.nvim_win_set_cursor(0, { 7, 4 })  -- at start of line
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(8, pos[1], "Should jump from int a (L7) to int b (L8)")
+end)
+
 -- Run all tests
 run_tests()

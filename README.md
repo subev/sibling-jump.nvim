@@ -5,7 +5,7 @@ Navigate between sibling nodes in your code using Tree-sitter. Context-aware nav
 ## Features
 
 - **Context-aware navigation**: Jumps between meaningful code units (statements, properties, array elements, etc.)
-- **Multi-language support**: Primarily supports TypeScript/JavaScript, with partial support for other languages
+- **Multi-language support**: Works with TypeScript, JavaScript, JSX, TSX, Lua, Java, C, C#, Python, and more
 - **Smart boundary detection**: Prevents navigation from jumping out of context
 - **Method chain navigation**: Seamlessly navigate through method chains like `obj.foo().bar().baz()`
 - **If-else chain navigation**: Jump between if/else-if/else clauses
@@ -25,6 +25,26 @@ Navigate between sibling nodes in your code using Tree-sitter. Context-aware nav
 - Generic type parameters
 - Union type members
 - And more!
+
+## Supported Languages
+
+**sibling-jump.nvim** works with any language that has Tree-sitter support. The following languages have been tested:
+
+### Extensively Tested
+- **TypeScript** (.ts)
+- **TSX** (.tsx)
+- **JavaScript** (.js)
+- **JSX** (.jsx)
+- **Lua** (.lua)
+
+### Basic Support (Lightly Tested)
+- **Java** (.java)
+- **C** (.c)
+- **C++** (.cpp)
+- **C#** (.cs)
+- **Python** (.py)
+
+The plugin should work with most languages out of the box. If you encounter issues with a specific language, please [open an issue](https://github.com/yourusername/sibling-jump.nvim/issues) with a minimal example.
 
 ## Installation
 
