@@ -1,5 +1,92 @@
 # Changelog: statement_jump.lua
 
+## 2025-12-30 - Fix: Return Statement in Switch Case No Longer Escapes to Sibling Cases
+
+### Issue
+When cursor was positioned on a return statement (or any single statement) inside a switch case, pressing `<C-k>` or `<C-j>` would incorrectly jump to the previous/next case instead of being a no-op.
+
+**Example from real code (WelcomePopup.tsx):**
+```typescript
+switch (type) {
+  case "signup_onboarding":  // Line 100
+    return { ... };
+  
+  case "login_platform":     // Line 119
+    return {                 // Line 120 - cursor here, press <C-k>
+      title: "Welcome back",
+    };
+}
+```
+
+**Problem:** From line 120, pressing `<C-k>` jumped to line 100 (previous case) instead of no-op.
+
+### Root Cause
+Multiple issues in the navigation logic:
+
+1. **`is_in_switch_case()` logic flaw:** When detecting a single statement in a case, the function would `break` and continue checking for case navigation instead of returning `false` to prevent it.
+
+2. **Missing check in `get_node_at_cursor()`:** The main fallback navigation didn't check if a meaningful node was the only statement inside a switch_case, allowing it to find sibling cases as navigation targets.
+
+3. **Case/default keywords not skipped:** The "case" and "default" keywords themselves weren't marked as skippable, potentially being treated as navigable siblings.
+
+### Fixes
+
+**1. Fixed `is_in_switch_case()` logic:**
+```lua
+-- Before: break and continue to case navigation
+-- After: return false, nil, 0 to prevent case navigation
+if meaningful_count > 1 then
+  return false, nil, 0
+else
+  -- Single statement in case - no-op
+  return false, nil, 0  -- Now returns instead of break
+end
+```
+
+**2. Added check in `get_node_at_cursor()` main flow:**
+```lua
+if is_meaningful_node(current) then
+  local parent = current:parent()
+  
+  -- NEW: Check if single statement in switch_case
+  if parent and (parent:type() == "switch_case" or parent:type() == "switch_default") then
+    local meaningful_count = count_meaningful_children(parent)
+    if meaningful_count == 1 then
+      return nil, "Single statement in case - would exit context"
+    end
+  end
+  
+  return current, parent
+end
+```
+
+**3. Made case/default keywords skippable:**
+```lua
+-- Skip switch case keywords (they're delimiters, not navigable content)
+if node_type == "case" or node_type == "default" then
+  return true
+end
+```
+
+### Test Coverage
+
+**Added 2 comprehensive tests:**
+1. Return statement at case level should not escape to previous case (backward)
+2. Return statement should not jump forward to next case (forward)
+
+**New test fixture:** Added `returnAtCaseLevel()` function to `switch_cases.ts`
+
+**Results:** All 114 tests pass (112 original + 2 new)
+
+### Impact
+- ✅ Fixes return statement navigation in switch cases
+- ✅ Applies to any single statement in a case (not just return)
+- ✅ Prevents accidental escape to sibling cases
+- ✅ Proper no-op behavior at case boundaries
+- ✅ All existing tests continue to pass
+
+---
+
 ## 2025-12-30 - Fix: Switch Case Navigation Respects Object Property Context
 
 ### Issue

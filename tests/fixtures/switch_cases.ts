@@ -161,3 +161,27 @@ function objectLiterals(type: string, username: string) {
   
   const after = 16;
 }
+
+// Switch with return statements at case level
+function returnAtCaseLevel(type: string, username: string) {
+  const before = 17;
+  
+  switch (type) {
+    case "first":
+      return {
+        value: 1,
+      };
+    
+    case "second":
+      return {
+        value: 2,
+      };
+    
+    case "third":
+      return {
+        value: 3,
+      };
+  }
+  
+  const after = 18;
+}

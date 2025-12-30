@@ -62,6 +62,11 @@ local function is_skippable_node(node)
     return true
   end
 
+  -- Skip switch case keywords (they're delimiters, not navigable content)
+  if node_type == "case" or node_type == "default" then
+    return true
+  end
+
   -- Skip empty nodes (nodes with no content)
   local start_row, start_col, end_row, end_col = node:range()
   if start_row == end_row and start_col == end_col then
@@ -420,7 +425,7 @@ local function get_node_at_cursor(bufnr)
         -- Example: inside an arrow function with multiple statements, navigate between
         -- statements, not between function arguments.
 
-        -- Walk up from current node to find if there's a meaningful node in a statement_block
+        -- Walk up from current node to find if there's a meaningful node in a statement_block or switch_case
         local test_node = current
         while test_node and test_node ~= check_node do
           if is_meaningful_node(test_node) then
@@ -439,6 +444,23 @@ local function get_node_at_cursor(bufnr)
               else
                 -- Single statement in block - no-op (don't navigate outside the block)
                 return nil, "Single statement in block - would exit context"
+              end
+            end
+            -- Check if parent is switch_case or switch_default
+            if test_parent and (test_parent:type() == "switch_case" or test_parent:type() == "switch_default") then
+              -- Count meaningful statement children in the case
+              local meaningful_count = 0
+              for child in test_parent:iter_children() do
+                if is_meaningful_node(child) then
+                  meaningful_count = meaningful_count + 1
+                end
+              end
+              -- If there are multiple meaningful statements in the case, prefer statement navigation
+              if meaningful_count > 1 then
+                return test_node, test_parent
+              else
+                -- Single statement in case - no-op (don't navigate outside the case)
+                return nil, "Single statement in case - would exit context"
               end
             end
           end
@@ -477,7 +499,24 @@ local function get_node_at_cursor(bufnr)
     end
 
     if is_meaningful_node(current) then
-      return current, current:parent()
+      local parent = current:parent()
+      
+      -- Check if we're inside a switch_case or switch_default with single statement
+      if parent and (parent:type() == "switch_case" or parent:type() == "switch_default") then
+        -- Count meaningful statement children in the case
+        local meaningful_count = 0
+        for child in parent:iter_children() do
+          if is_meaningful_node(child) then
+            meaningful_count = meaningful_count + 1
+          end
+        end
+        -- If single statement, return nil (no-op, don't navigate outside the case)
+        if meaningful_count == 1 then
+          return nil, "Single statement in case - would exit context"
+        end
+      end
+      
+      return current, parent
     end
     current = current:parent()
   end
@@ -1034,9 +1073,10 @@ local function is_in_switch_case(node)
         -- If there are multiple meaningful statements in the case, prefer statement navigation
         if meaningful_count > 1 then
           return false, nil, 0
+        else
+          -- Single statement in case - no-op (don't navigate to sibling cases)
+          return false, nil, 0
         end
-        -- If single statement in case, continue to check for case navigation
-        break
       end
     end
     test_node = test_node:parent()

@@ -1459,5 +1459,31 @@ test("Switch cases: navigate nested object in return statement", function()
   assert_eq(137, pos[1], "Should navigate between nested object properties")
 end)
 
+test("Switch cases: return statement at case level should not escape to previous case", function()
+  vim.cmd("edit tests/fixtures/switch_cases.ts")
+  
+  -- Start at return statement in case "second" (line 176)
+  vim.api.nvim_win_set_cursor(0, {176, 6})
+  local initial_pos = vim.api.nvim_win_get_cursor(0)
+  
+  -- Try to jump backward (should be no-op since return is only statement in case)
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(initial_pos[1], pos[1], "Should not escape to previous case from single return statement")
+end)
+
+test("Switch cases: return statement should not jump forward to next case", function()
+  vim.cmd("edit tests/fixtures/switch_cases.ts")
+  
+  -- Start at return statement in case "second" (line 176)
+  vim.api.nvim_win_set_cursor(0, {176, 6})
+  local initial_pos = vim.api.nvim_win_get_cursor(0)
+  
+  -- Try to jump forward (should be no-op since return is only statement in case)
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(initial_pos[1], pos[1], "Should not jump to next case from single return statement")
+end)
+
 -- Run all tests
 run_tests()
