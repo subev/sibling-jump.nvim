@@ -1537,6 +1537,54 @@ test("Lua function: statements inside else block", function()
   assert_eq(31, pos[1], "Should jump between vim.keymap.set calls (L27→L31)")
 end)
 
+test("Lua labels: backward navigation from label", function()
+  vim.cmd("edit tests/fixtures/lua_statements.lua")
+  vim.api.nvim_win_set_cursor(0, { 27, 4 }) -- On ::continue:: label
+
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(26, pos[1], "Should jump from label (L27) to print statement (L26)")
+end)
+
+test("Lua labels: forward navigation to label", function()
+  vim.cmd("edit tests/fixtures/lua_statements.lua")
+  vim.api.nvim_win_set_cursor(0, { 26, 4 }) -- On print(x)
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(27, pos[1], "Should jump from print (L26) to label (L27)")
+end)
+
+test("Lua if-else-elseif: forward navigation through chain to statements", function()
+  vim.cmd("edit tests/fixtures/lua_if_else.lua")
+  vim.api.nvim_win_set_cursor(0, { 7, 2 }) -- On 'if' at line 7
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(9, pos[1], "Should jump from if (L7) to first elseif (L9)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(11, pos[1], "Should jump from first elseif (L9) to second elseif (L11)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(13, pos[1], "Should jump from second elseif (L11) to else (L13)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(17, pos[1], "Should jump from else (L13) to return statement (L17)")
+end)
+
+test("Lua if-else-elseif: backward from statement after chain jumps to last else", function()
+  vim.cmd("edit tests/fixtures/lua_if_else.lua")
+  vim.api.nvim_win_set_cursor(0, { 17, 2 }) -- On 'return x' at line 17
+
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(13, pos[1], "Should jump from return (L17) to else (L13), not to if")
+end)
+
 -- ============================================================================
 -- JAVA TESTS (Basic Support)
 -- ============================================================================

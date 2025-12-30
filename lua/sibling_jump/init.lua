@@ -215,7 +215,9 @@ local function is_meaningful_node(node)
     "function_definition", -- Anonymous functions
     "repeat_statement", -- repeat-until loops
     "do_statement", -- do-end blocks
-    "elseif_clause", -- elseif branches
+    "label_statement", -- Labels like ::continue::
+    "elseif_statement", -- elseif branches (treated as meaningful for simpler Lua navigation)
+    "else_statement", -- else branches (treated as meaningful for simpler Lua navigation)
 
     -- Java
     "local_variable_declaration", -- Local variables in methods
@@ -842,6 +844,7 @@ end
 
 -- Collect all else clauses in an if-else-if chain
 -- Returns: list of else_clause nodes (in order from first to last)
+-- Note: This is for JavaScript/TypeScript only. Lua uses a different approach.
 local function collect_else_clauses(if_node)
   local clauses = {}
   local current_if = if_node
@@ -921,7 +924,7 @@ local function is_in_if_else_chain(node)
       found_if = current
       current = current:parent()
       depth = depth + 1
-    elseif current:type() == "else_clause" then
+    elseif current:type() == "else_clause" or current:type() == "elseif_statement" or current:type() == "else_statement" then
       found_else_clause = current
       -- Continue walking up to find the parent if_statement
       current = current:parent()
@@ -958,6 +961,17 @@ local function is_in_if_else_chain(node)
 
   -- Check if this if_statement has else clauses
   local else_clauses = collect_else_clauses(found_if)
+  
+  -- For Lua: collect elseif_statement and else_statement directly from if_node children
+  if #else_clauses == 0 then
+    for i = 0, found_if:child_count() - 1 do
+      local child = found_if:child(i)
+      if child:type() == "elseif_statement" or child:type() == "else_statement" then
+        table.insert(else_clauses, child)
+      end
+    end
+  end
+  
   if #else_clauses == 0 then
     return false, nil, 0
   end
@@ -987,6 +1001,20 @@ local function is_in_if_else_chain(node)
   local first_else_row = else_clauses[1]:start()
 
   if cursor_row >= if_start_row and cursor_row < first_else_row then
+    -- Additional check for Lua: make sure we're not inside a consequence/body block
+    -- In Lua, the block starts on a different line than the if keyword
+    -- Check if cursor is beyond the if keyword line (meaning we're in the block)
+    for i = 0, found_if:child_count() - 1 do
+      local child = found_if:child(i)
+      if child:type() == "block" then  -- Lua uses "block", not "statement_block"
+        local block_start, _, block_end = child:range()
+        if cursor_row >= block_start and cursor_row <= block_end then
+          -- We're inside the consequence block, not on the if keyword
+          return false, nil, 0
+        end
+      end
+    end
+    
     -- Cursor is on the main if part (before any else)
     return true, found_if, 0
   end
@@ -995,9 +1023,19 @@ local function is_in_if_else_chain(node)
 end
 
 -- Navigate forward/backward in an if-else-if chain
--- Returns: target node (if_statement or else_clause), target_row, target_col, or nil
+-- Returns: target node (if_statement or else_clause/elseif_statement/else_statement), target_row, target_col, or nil
 local function navigate_if_else_chain(if_node, current_pos, forward)
   local else_clauses = collect_else_clauses(if_node)
+  
+  -- For Lua: collect elseif_statement and else_statement directly from if_node children
+  if #else_clauses == 0 then
+    for i = 0, if_node:child_count() - 1 do
+      local child = if_node:child(i)
+      if child:type() == "elseif_statement" or child:type() == "else_statement" then
+        table.insert(else_clauses, child)
+      end
+    end
+  end
 
   if forward then
     -- Forward navigation: if (pos=0) → else if (pos=1) → else if (pos=2) → else (pos=N) → next statement
@@ -1005,6 +1043,10 @@ local function navigate_if_else_chain(if_node, current_pos, forward)
       -- On main if, jump to first else clause
       if #else_clauses > 0 then
         local target_row, target_col = get_else_keyword_position(else_clauses[1])
+        -- For Lua nodes, get_else_keyword_position returns nil, so fall back to node start
+        if not target_row then
+          target_row, target_col = else_clauses[1]:start()
+        end
         return else_clauses[1], target_row, target_col
       else
         -- No else clauses, jump to next sibling of if_statement
@@ -1022,6 +1064,10 @@ local function navigate_if_else_chain(if_node, current_pos, forward)
       -- On an else clause, jump to next else clause
       local next_clause = else_clauses[current_pos + 1]
       local target_row, target_col = get_else_keyword_position(next_clause)
+      -- For Lua nodes, get_else_keyword_position returns nil, so fall back to node start
+      if not target_row then
+        target_row, target_col = next_clause:start()
+      end
       return next_clause, target_row, target_col
     else
       -- On last else clause, jump to next sibling of if_statement
@@ -1056,6 +1102,10 @@ local function navigate_if_else_chain(if_node, current_pos, forward)
       -- On an else clause, jump to previous else clause
       local prev_clause = else_clauses[current_pos - 1]
       local target_row, target_col = get_else_keyword_position(prev_clause)
+      -- For Lua nodes, get_else_keyword_position returns nil, so fall back to node start
+      if not target_row then
+        target_row, target_col = prev_clause:start()
+      end
       return prev_clause, target_row, target_col
     end
   end
@@ -1461,10 +1511,25 @@ function M.jump_to_sibling(opts)
       if not forward and target_node:type() == "if_statement" then
         local else_clauses = collect_else_clauses(target_node)
         if #else_clauses > 0 then
-          -- Jump to the last else clause
+          -- Jump to the last else clause (JavaScript/TypeScript)
           local last_else = else_clauses[#else_clauses]
           target_node = last_else
           target_row, target_col = get_else_keyword_position(last_else)
+        else
+          -- For Lua: all alternatives (elseif_statement and else_statement) are direct children
+          -- Find the last one by iterating through all children
+          local last_alternative = nil
+          for i = 0, target_node:child_count() - 1 do
+            local child = target_node:child(i)
+            if child:type() == "else_statement" or child:type() == "elseif_statement" then
+              last_alternative = child  -- Keep updating to get the last one
+            end
+          end
+          
+          if last_alternative then
+            target_node = last_alternative
+            target_row, target_col = last_alternative:start()
+          end
         end
       end
 

@@ -17,4 +17,16 @@ function M.test()
   return a + b + c
 end
 
+function M.test_labels()
+  for i = 1, 10 do
+    local x = i * 2
+    if x > 10 then
+      goto continue
+    end
+    print(x)
+    ::continue::
+  end
+  return true
+end
+
 return M
