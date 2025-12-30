@@ -24,6 +24,27 @@ local stored_config = {
 -- Track which buffers have sibling-jump enabled
 local enabled_buffers = {}
 
+-- Comment delimiters for various languages
+local COMMENT_DELIMITERS = {
+  ["--"] = true,        -- Lua
+  ["//"] = true,        -- C/C++/Java/C#/JS/TS
+  ["/*"] = true,        -- C-style block comment start
+  ["*/"] = true,        -- C-style block comment end
+  ["#"] = true,         -- Python/Shell
+  ["<!--"] = true,      -- HTML/XML
+  ["-->"] = true,       -- HTML/XML
+  ["comment_content"] = true,  -- Generic comment content node
+}
+
+-- Check if a node is a comment node
+local function is_comment_node(node)
+  if not node then
+    return false
+  end
+  local node_type = node:type()
+  return node_type:match("comment") ~= nil or COMMENT_DELIMITERS[node_type]
+end
+
 -- Check if node should be skipped (comments, empty nodes, punctuation)
 local function is_skippable_node(node)
   if not node then
@@ -36,19 +57,9 @@ local function is_skippable_node(node)
   if node_type:match("comment") then
     return true
   end
-  
+
   -- Skip comment delimiters (language-agnostic)
-  local comment_delimiters = {
-    ["--"] = true,        -- Lua
-    ["//"] = true,        -- C/C++/Java/C#/JS/TS
-    ["/*"] = true,        -- C-style block comment start
-    ["*/"] = true,        -- C-style block comment end
-    ["#"] = true,         -- Python/Shell
-    ["<!--"] = true,      -- HTML/XML
-    ["-->"] = true,       -- HTML/XML
-    ["comment_content"] = true,  -- Generic comment content node
-  }
-  if comment_delimiters[node_type] then
+  if COMMENT_DELIMITERS[node_type] then
     return true
   end
 
@@ -98,44 +109,44 @@ local function is_meaningful_node(node)
   end
 
   local node_type = node:type()
-  
+
   -- Special case: identifier is meaningful in some contexts but not others
   if node_type == "identifier" then
     local parent = node:parent()
     if not parent then
       return false
     end
-    
+
     -- identifier is meaningful in array_pattern (tuple destructuring)
     if parent:type() == "array_pattern" then
       return true
     end
-    
+
     -- identifier is NOT meaningful as the object in member_expression
     if parent:type() == "member_expression" then
       return false
     end
-    
+
     -- identifier is NOT meaningful in other contexts
     return false
   end
-  
+
   -- Special case: type_identifier is meaningful in some contexts but not others
   if node_type == "type_identifier" then
     local parent = node:parent()
     if not parent then
       return false
     end
-    
+
     -- type_identifier is NOT meaningful when it's a member of a union_type
     -- (we want to navigate between union members, not individual type_identifiers)
     if parent:type() == "union_type" then
       return false
     end
-    
+
     -- type_identifier IS meaningful when it's the name of a type declaration
     -- This is handled by the special check in get_node_at_cursor
-    
+
     -- type_identifier is meaningful in other contexts (e.g., as a type annotation)
     return true
   end
@@ -185,7 +196,7 @@ local function is_meaningful_node(node)
     "shorthand_property_identifier_pattern", -- For destructured properties like `{ tab, setTab }`
     "pair_pattern", -- For renamed destructured properties like `{ currentTab: tab }`
     -- Note: identifier is handled specially in is_meaningful_node()
-    
+
     -- Type annotations
     "type_parameter", -- For generic type parameters like <T, U, V>
     "literal_type", -- For union type members like "pending" | "success" | "error"
@@ -199,19 +210,19 @@ local function is_meaningful_node(node)
 
     -- Lua
     "assignment_statement",
-    "function_call",            -- FIX: was incorrectly function_call_statement
-    "function_declaration",     -- Function declarations
-    "function_definition",      -- Anonymous functions
-    "repeat_statement",         -- repeat-until loops
-    "do_statement",             -- do-end blocks
-    "elseif_clause",            -- elseif branches
+    "function_call", -- FIX: was incorrectly function_call_statement
+    "function_declaration", -- Function declarations
+    "function_definition", -- Anonymous functions
+    "repeat_statement", -- repeat-until loops
+    "do_statement", -- do-end blocks
+    "elseif_clause", -- elseif branches
 
     -- Java
     "local_variable_declaration", -- Local variables in methods
-    "field_declaration",          -- Class fields
+    "field_declaration", -- Class fields
 
     -- C/C++
-    "declaration",                -- Variable declarations
+    "declaration", -- Variable declarations
 
     -- C#
     "local_declaration_statement", -- Local variables
@@ -267,9 +278,9 @@ local function get_node_at_cursor(bufnr)
   -- Special case: if we're on a container node (like statement_block, object, etc.)
   -- where cursor is on whitespace/between children, find the closest meaningful child
   local container_types = {
-    ["statement_block"] = true,     -- JS/TS function bodies
-    ["block"] = true,                -- Lua/Java/C# function bodies
-    ["compound_statement"] = true,   -- C/C++ function bodies
+    ["statement_block"] = true, -- JS/TS function bodies
+    ["block"] = true, -- Lua/Java/C# function bodies
+    ["compound_statement"] = true, -- C/C++ function bodies
     ["object"] = true,
     ["object_type"] = true,
     ["array"] = true,
@@ -322,18 +333,21 @@ local function get_node_at_cursor(bufnr)
   end
 
   -- Check if we're starting on a comment or empty line
-  local started_on_comment = node and (node:type():match("comment") or node:type() == "--" or node:type() == "//" or node:type() == "/*" or node:type() == "*/" or node:type() == "#")
+  local started_on_comment = is_comment_node(node)
   local started_on_empty_line = node and node:type() == "chunk"
-  
+
   -- Walk up the tree until we find a "meaningful" node that represents
   -- a complete unit we want to jump between (like a property_signature, statement, etc.)
   local current = node
   while current do
     -- Special case: if we started on a comment/empty line and reached a container,
     -- stop here and handle in fallback (don't walk up to find meaningful parent)
-    if (started_on_comment or started_on_empty_line) then
+    if started_on_comment or started_on_empty_line then
       local current_type = current:type()
-      local is_container = current_type == "block" or current_type == "statement_block" or current_type == "compound_statement" or current_type == "chunk"
+      local is_container = current_type == "block"
+        or current_type == "statement_block"
+        or current_type == "compound_statement"
+        or current_type == "chunk"
       if is_container then
         -- Don't continue walking up - we want to search THIS container's children
         break
@@ -348,12 +362,12 @@ local function get_node_at_cursor(bufnr)
         return parent, parent:parent()
       end
     end
-  
+
     -- Special case: if current is an identifier inside a JSX element,
     -- walk up to find the jsx_self_closing_element or jsx_element
     if current:type() == "identifier" then
       local parent = current:parent()
-      
+
       -- JSX tag name - walk up to find the jsx element
       if parent and (parent:type() == "jsx_self_closing_element" or parent:type() == "jsx_opening_element") then
         -- We're a JSX tag name, walk up to find the jsx element
@@ -377,7 +391,7 @@ local function get_node_at_cursor(bufnr)
         end
       end
     end
-  
+
     -- Special case: if current is jsx_opening_element or jsx_closing_element,
     -- use the parent jsx_element instead
     if current:type() == "jsx_opening_element" or current:type() == "jsx_closing_element" then
@@ -465,7 +479,7 @@ local function get_node_at_cursor(bufnr)
           end
           parent = outermost
         end
-        
+
         -- Before using list container navigation, check if we're inside a statement_block
         -- with meaningful siblings. If so, prefer statement-level navigation.
         -- Example: inside an arrow function with multiple statements, navigate between
@@ -531,7 +545,7 @@ local function get_node_at_cursor(bufnr)
       end
       check_node = parent
     end
-    
+
     -- Special case: if we're inside a jsx_self_closing_element or jsx_element,
     -- and its parent is also a jsx_element (i.e., we're in a JSX fragment <>...</>),
     -- then use the jsx_self_closing_element/jsx_element as the navigation unit
@@ -546,7 +560,7 @@ local function get_node_at_cursor(bufnr)
 
     if is_meaningful_node(current) then
       local parent = current:parent()
-      
+
       -- Check if we're inside a switch_case or switch_default with single statement
       if parent and (parent:type() == "switch_case" or parent:type() == "switch_default") then
         -- Count meaningful statement children in the case
@@ -561,7 +575,7 @@ local function get_node_at_cursor(bufnr)
           return nil, "Single statement in case - would exit context"
         end
       end
-      
+
       return current, parent
     end
     current = current:parent()
@@ -569,14 +583,14 @@ local function get_node_at_cursor(bufnr)
 
   -- Fallback: if we didn't find a meaningful node, just use the first non-skippable node
   current = node
-  
+
   while current and is_skippable_node(current) do
     current = current:parent()
   end
 
   if current then
     local current_type = current:type()
-    
+
     -- Special case: if we started on a comment or empty line,
     -- we need to find the closest meaningful node to "escape" from the comment
     if started_on_comment or started_on_empty_line or current_type == "chunk" then
@@ -584,7 +598,7 @@ local function get_node_at_cursor(bufnr)
       -- If we walked up from a comment, current is already the parent container (block/chunk)
       -- If we're at chunk level (empty line), search chunk itself
       local search_parent = current
-      
+
       if search_parent then
         -- Collect all meaningful children
         local meaningful_children = {}
@@ -593,21 +607,21 @@ local function get_node_at_cursor(bufnr)
             table.insert(meaningful_children, child)
           end
         end
-        
+
         if #meaningful_children > 0 then
           -- Find closest meaningful nodes before and after cursor
           local closest_before = nil
           local closest_after = nil
-          
+
           for _, child in ipairs(meaningful_children) do
             local child_row = child:start()
             if child_row < row then
-              closest_before = child  -- Keep updating to get the last one before
+              closest_before = child -- Keep updating to get the last one before
             elseif child_row > row and not closest_after then
-              closest_after = child  -- Take the first one after
+              closest_after = child -- Take the first one after
             end
           end
-          
+
           -- Return a special marker that tells jump_to_sibling we're on a comment
           -- and provides both direction options
           return {
@@ -616,11 +630,12 @@ local function get_node_at_cursor(bufnr)
             closest_after = closest_after,
             parent = search_parent,
             cursor_row = row,
-          }, search_parent
+          },
+            search_parent
         end
       end
     end
-    
+
     return current, current:parent()
   end
 
@@ -630,7 +645,7 @@ end
 -- Recursively collect all union type members from a nested union_type structure
 local function collect_union_members(union_node, members)
   members = members or {}
-  
+
   for child in union_node:iter_children() do
     if child:type() == "union_type" then
       -- Recursively collect from nested union
@@ -641,7 +656,7 @@ local function collect_union_members(union_node, members)
     end
     -- Skip | operators and other punctuation
   end
-  
+
   return members
 end
 
@@ -652,12 +667,12 @@ local function get_sibling_nodes(parent)
   end
 
   local parent_type = parent:type()
-  
+
   -- Special case: for union_type, collect all members recursively
   if parent_type == "union_type" then
     return collect_union_members(parent)
   end
-  
+
   local siblings = {}
   for child in parent:iter_children() do
     if not is_skippable_node(child) then
@@ -830,7 +845,7 @@ end
 local function collect_else_clauses(if_node)
   local clauses = {}
   local current_if = if_node
-  
+
   while current_if and current_if:type() == "if_statement" do
     -- Look for else_clause in this if_statement
     local found_else = false
@@ -839,7 +854,7 @@ local function collect_else_clauses(if_node)
       if child:type() == "else_clause" then
         found_else = true
         table.insert(clauses, child)
-        
+
         -- Check if this else clause contains another if_statement (else if)
         -- or a statement_block (final else)
         for j = 0, child:child_count() - 1 do
@@ -857,12 +872,12 @@ local function collect_else_clauses(if_node)
         break
       end
     end
-    
+
     if not found_else then
       break
     end
   end
-  
+
   return clauses
 end
 
@@ -872,7 +887,7 @@ local function get_else_keyword_position(else_clause_node)
   if not else_clause_node or else_clause_node:type() ~= "else_clause" then
     return nil, nil
   end
-  
+
   -- Find the 'else' keyword child
   for i = 0, else_clause_node:child_count() - 1 do
     local child = else_clause_node:child(i)
@@ -880,7 +895,7 @@ local function get_else_keyword_position(else_clause_node)
       return child:start()
     end
   end
-  
+
   -- Fallback to else_clause start position
   return else_clause_node:start()
 end
@@ -892,14 +907,14 @@ local function is_in_if_else_chain(node)
   if not node then
     return false, nil, 0
   end
-  
+
   -- Walk up to find if_statement or else_clause
   -- We want to find the OUTERMOST if_statement that contains the cursor
   local current = node
   local depth = 0
   local found_if = nil
   local found_else_clause = nil
-  
+
   while current and depth < 20 do
     if current:type() == "if_statement" then
       -- Found an if_statement, but continue looking for outer ones
@@ -915,13 +930,13 @@ local function is_in_if_else_chain(node)
       current = current:parent()
       depth = depth + 1
     end
-    
+
     -- Stop if we've gone too far up
     if current and (current:type() == "statement_block" or current:type() == "program") then
       break
     end
   end
-  
+
   -- If we found an if_statement but it's nested inside an else_clause,
   -- walk up to find the outermost if_statement in the chain
   if found_if then
@@ -936,46 +951,46 @@ local function is_in_if_else_chain(node)
       end
     end
   end
-  
+
   if not found_if then
     return false, nil, 0
   end
-  
+
   -- Check if this if_statement has else clauses
   local else_clauses = collect_else_clauses(found_if)
   if #else_clauses == 0 then
     return false, nil, 0
   end
-  
+
   -- Determine current position: are we on the main if or on an else clause?
   local cursor = vim.api.nvim_win_get_cursor(0)
   local cursor_row = cursor[1] - 1 -- Convert to 0-indexed
-  
+
   -- Check if cursor is on one of the else clauses (compare by position, not object identity)
   -- Since else clauses can be nested, we want the LAST (innermost) match
   local matched_position = nil
   for i, clause in ipairs(else_clauses) do
     local clause_start_row = clause:start()
     local clause_end_row = select(3, clause:range())
-    
+
     if cursor_row >= clause_start_row and cursor_row <= clause_end_row then
       matched_position = i
     end
   end
-  
+
   if matched_position then
     return true, found_if, matched_position
   end
-  
+
   -- Check if cursor is on the main if (not on any else clause)
   local if_start_row = found_if:start()
   local first_else_row = else_clauses[1]:start()
-  
+
   if cursor_row >= if_start_row and cursor_row < first_else_row then
     -- Cursor is on the main if part (before any else)
     return true, found_if, 0
   end
-  
+
   return false, nil, 0
 end
 
@@ -983,7 +998,7 @@ end
 -- Returns: target node (if_statement or else_clause), target_row, target_col, or nil
 local function navigate_if_else_chain(if_node, current_pos, forward)
   local else_clauses = collect_else_clauses(if_node)
-  
+
   if forward then
     -- Forward navigation: if (pos=0) → else if (pos=1) → else if (pos=2) → else (pos=N) → next statement
     if current_pos == 0 then
@@ -1050,11 +1065,11 @@ end
 -- Returns: list of switch_case/switch_default nodes (in order from first to last)
 local function collect_switch_cases(switch_node)
   local cases = {}
-  
+
   if not switch_node or switch_node:type() ~= "switch_statement" then
     return cases
   end
-  
+
   -- Find the switch_body child
   local switch_body = nil
   for i = 0, switch_node:child_count() - 1 do
@@ -1064,11 +1079,11 @@ local function collect_switch_cases(switch_node)
       break
     end
   end
-  
+
   if not switch_body then
     return cases
   end
-  
+
   -- Collect all switch_case and switch_default children
   for i = 0, switch_body:child_count() - 1 do
     local child = switch_body:child(i)
@@ -1076,7 +1091,7 @@ local function collect_switch_cases(switch_node)
       table.insert(cases, child)
     end
   end
-  
+
   return cases
 end
 
@@ -1086,23 +1101,23 @@ local function get_case_keyword_position(case_node)
   if not case_node then
     return nil, nil
   end
-  
+
   local node_type = case_node:type()
   if node_type ~= "switch_case" and node_type ~= "switch_default" then
     return nil, nil
   end
-  
+
   -- For switch_case, find the 'case' keyword child
   -- For switch_default, find the 'default' keyword child
   local keyword = node_type == "switch_case" and "case" or "default"
-  
+
   for i = 0, case_node:child_count() - 1 do
     local child = case_node:child(i)
     if child:type() == keyword then
       return child:start()
     end
   end
-  
+
   -- Fallback to case node start position
   return case_node:start()
 end
@@ -1114,31 +1129,31 @@ local function is_in_switch_case(node)
   if not node then
     return false, nil, 0
   end
-  
+
   -- FIRST: Check if we're inside a higher-priority navigation context
   -- These contexts take precedence over switch case navigation
   local test_node = node
   while test_node do
     local node_type = test_node:type()
-    
+
     -- If we're inside an object literal, prefer object property navigation
     if node_type == "object" or node_type == "object_type" then
       return false, nil, 0
     end
-    
+
     -- If we're inside an array, prefer array element navigation
     if node_type == "array" then
       return false, nil, 0
     end
-    
+
     -- If we're inside function parameters/arguments, prefer parameter navigation
     if node_type == "arguments" or node_type == "formal_parameters" then
       return false, nil, 0
     end
-    
+
     if is_meaningful_node(test_node) then
       local test_parent = test_node:parent()
-      
+
       -- Check if parent is statement_block (for block-scoped cases)
       if test_parent and test_parent:type() == "statement_block" then
         -- Count meaningful children in the statement block
@@ -1153,7 +1168,7 @@ local function is_in_switch_case(node)
           return false, nil, 0
         end
       end
-      
+
       -- Check if parent is switch_case/switch_default (for non-block cases)
       if test_parent and (test_parent:type() == "switch_case" or test_parent:type() == "switch_default") then
         -- Count meaningful statement children in the case
@@ -1173,19 +1188,19 @@ local function is_in_switch_case(node)
       end
     end
     test_node = test_node:parent()
-    
+
     -- Stop if we've reached a switch_case or switch_default
     if test_node and (test_node:type() == "switch_case" or test_node:type() == "switch_default") then
       break
     end
   end
-  
+
   -- Walk up to find switch_case, switch_default, or switch_statement
   local current = node
   local depth = 0
   local found_case = nil
   local found_switch = nil
-  
+
   while current and depth < 20 do
     if current:type() == "switch_case" or current:type() == "switch_default" then
       found_case = current
@@ -1203,36 +1218,36 @@ local function is_in_switch_case(node)
       current = current:parent()
       depth = depth + 1
     end
-    
+
     -- Stop if we've gone too far up
     if current and (current:type() == "statement_block" or current:type() == "program") then
       break
     end
   end
-  
+
   if not found_switch or not found_case then
     return false, nil, 0
   end
-  
+
   -- Get all cases and find the index of the current case
   local cases = collect_switch_cases(found_switch)
   if #cases == 0 then
     return false, nil, 0
   end
-  
+
   -- Find which case we're in by comparing positions
   local cursor = vim.api.nvim_win_get_cursor(0)
   local cursor_row = cursor[1] - 1 -- Convert to 0-indexed
-  
+
   for i, case_node in ipairs(cases) do
     local case_start_row = case_node:start()
     local case_end_row = select(3, case_node:range())
-    
+
     if cursor_row >= case_start_row and cursor_row <= case_end_row then
       return true, found_switch, i
     end
   end
-  
+
   return false, nil, 0
 end
 
@@ -1240,11 +1255,11 @@ end
 -- Returns: target case node, target_row, target_col, or nil
 local function navigate_switch_cases(switch_node, current_pos, forward)
   local cases = collect_switch_cases(switch_node)
-  
+
   if #cases == 0 then
     return nil, nil, nil
   end
-  
+
   if forward then
     -- Forward navigation: case 1 → case 2 → ... → case N → no-op
     if current_pos < #cases then
@@ -1342,7 +1357,7 @@ function M.jump_to_sibling(opts)
                 return
               end
             end
-            
+
             -- SECOND: Check if we're in an if-else-if chain
             local in_if_else, if_node, current_pos = is_in_if_else_chain(node)
             if in_if_else then
@@ -1359,7 +1374,7 @@ function M.jump_to_sibling(opts)
               end
               -- At boundary of chain, fall through to regular navigation
             end
-            
+
             -- THIRD: Check if we're in a switch case chain
             local in_switch, switch_node, current_case_pos = is_in_switch_case(node)
             if in_switch then
@@ -1414,19 +1429,19 @@ function M.jump_to_sibling(opts)
       -- Always return after handling whitespace (no sibling navigation)
       return
     end
-    
+
     -- Special case: if we're on a comment or empty line, jump to nearest meaningful node
     if type(current_node) == "table" and current_node._on_comment then
       local target_node = forward and current_node.closest_after or current_node.closest_before
-      
+
       if target_node then
         -- Add current position to jump list before moving
         vim.cmd("normal! m'")
-        
+
         -- Get the appropriate cursor position (adjusted for JSX elements)
         local target_row, target_col = get_jsx_tag_position(target_node)
         vim.api.nvim_win_set_cursor(0, { target_row + 1, target_col })
-        
+
         -- Center the screen on the new position (if enabled)
         if config.center_on_jump then
           vim.cmd("normal! zz")
@@ -1452,7 +1467,7 @@ function M.jump_to_sibling(opts)
           target_row, target_col = get_else_keyword_position(last_else)
         end
       end
-      
+
       -- Add current position to jump list before moving
       vim.cmd("normal! m'")
 
@@ -1481,7 +1496,7 @@ function M.enable_for_buffer(bufnr, opts)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
   opts = opts or {}
   local silent = opts.silent or false
-  
+
   -- Check if already enabled
   if enabled_buffers[bufnr] then
     if not silent then
@@ -1489,7 +1504,7 @@ function M.enable_for_buffer(bufnr, opts)
     end
     return
   end
-  
+
   -- Set buffer-local keymaps
   vim.keymap.set("n", stored_config.next_key, function()
     M.jump_to_sibling({ forward = true })
@@ -1498,10 +1513,10 @@ function M.enable_for_buffer(bufnr, opts)
   vim.keymap.set("n", stored_config.prev_key, function()
     M.jump_to_sibling({ forward = false })
   end, { buffer = bufnr, noremap = true, silent = true, desc = "Jump to previous sibling node" })
-  
+
   -- Mark as enabled
   enabled_buffers[bufnr] = true
-  
+
   if not silent then
     vim.notify("sibling-jump enabled for buffer " .. bufnr, vim.log.levels.INFO)
   end
@@ -1512,7 +1527,7 @@ function M.disable_for_buffer(bufnr, opts)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
   opts = opts or {}
   local silent = opts.silent or false
-  
+
   -- Check if not enabled
   if not enabled_buffers[bufnr] then
     if not silent then
@@ -1520,14 +1535,14 @@ function M.disable_for_buffer(bufnr, opts)
     end
     return
   end
-  
+
   -- Delete buffer-local keymaps
   pcall(vim.keymap.del, "n", stored_config.next_key, { buffer = bufnr })
   pcall(vim.keymap.del, "n", stored_config.prev_key, { buffer = bufnr })
-  
+
   -- Mark as disabled
   enabled_buffers[bufnr] = nil
-  
+
   if not silent then
     vim.notify("sibling-jump disabled for buffer " .. bufnr, vim.log.levels.INFO)
   end
@@ -1536,7 +1551,7 @@ end
 -- Toggle sibling-jump for a specific buffer
 function M.toggle_for_buffer(bufnr)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
-  
+
   if enabled_buffers[bufnr] then
     M.disable_for_buffer(bufnr)
   else
@@ -1547,15 +1562,15 @@ end
 -- Check status of sibling-jump for a specific buffer
 function M.status_for_buffer(bufnr)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
-  
+
   local status = enabled_buffers[bufnr] and "enabled" or "disabled"
   local filetype = vim.api.nvim_buf_get_option(bufnr, "filetype")
-  
+
   vim.notify(
     string.format("sibling-jump: %s for buffer %d (filetype: %s)", status, bufnr, filetype),
     vim.log.levels.INFO
   )
-  
+
   return enabled_buffers[bufnr] ~= nil
 end
 
@@ -1566,7 +1581,7 @@ function M.setup(opts)
   -- Store configuration for manual buffer enable/disable
   stored_config.next_key = opts.next_key or "<C-j>"
   stored_config.prev_key = opts.prev_key or "<C-k>"
-  
+
   -- Update configuration
   config.center_on_jump = opts.center_on_jump ~= nil and opts.center_on_jump or false
 
@@ -1581,7 +1596,7 @@ function M.setup(opts)
       end,
       desc = "Set sibling-jump keymaps for specific filetypes",
     })
-    
+
     -- Also set for current buffer if it matches
     local current_ft = vim.bo.filetype
     if current_ft and vim.tbl_contains(filetypes, current_ft) then
@@ -1597,20 +1612,20 @@ function M.setup(opts)
       M.jump_to_sibling({ forward = false })
     end, { noremap = true, silent = true, desc = "Jump to previous sibling node" })
   end
-  
+
   -- Create user commands for manual buffer control
   vim.api.nvim_create_user_command("SiblingJumpBufferEnable", function()
     M.enable_for_buffer()
   end, { desc = "Enable sibling-jump for current buffer" })
-  
+
   vim.api.nvim_create_user_command("SiblingJumpBufferDisable", function()
     M.disable_for_buffer()
   end, { desc = "Disable sibling-jump for current buffer" })
-  
+
   vim.api.nvim_create_user_command("SiblingJumpBufferToggle", function()
     M.toggle_for_buffer()
   end, { desc = "Toggle sibling-jump for current buffer" })
-  
+
   vim.api.nvim_create_user_command("SiblingJumpBufferStatus", function()
     M.status_for_buffer()
   end, { desc = "Check sibling-jump status for current buffer" })
