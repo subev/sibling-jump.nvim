@@ -1704,5 +1704,50 @@ test("Comment escape: backward from empty line", function()
   assert_eq(10, pos[1], "Should jump from empty line (L11) back to local a (L10)")
 end)
 
+-- ============================================================================
+-- LEADING WHITESPACE NAVIGATION TESTS
+-- ============================================================================
+
+test("Leading whitespace: forward navigation", function()
+  vim.cmd("edit tests/fixtures/leading_whitespace.lua")
+  vim.api.nvim_win_set_cursor(0, { 5, 0 })  -- Line 5, col 0 (before local a)
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(6, pos[1], "Should jump from leading whitespace at local a (L5) to local b (L6)")
+end)
+
+test("Leading whitespace: backward navigation", function()
+  vim.cmd("edit tests/fixtures/leading_whitespace.lua")
+  vim.api.nvim_win_set_cursor(0, { 7, 0 })  -- Line 7, col 0 (before local c)
+
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(6, pos[1], "Should jump from leading whitespace at local c (L7) to local b (L6)")
+end)
+
+test("Leading whitespace: navigates within correct scope", function()
+  vim.cmd("edit tests/fixtures/leading_whitespace.lua")
+  vim.api.nvim_win_set_cursor(0, { 5, 0 })  -- Line 5, col 0 (before local a)
+
+  -- Should navigate within the function, not escape to module level
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(6, pos[1], "Should stay within function scope")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(7, pos[1], "Should continue within function scope")
+end)
+
+test("Leading whitespace: TypeScript navigation", function()
+  vim.cmd("edit tests/fixtures/statements.ts")
+  vim.api.nvim_win_set_cursor(0, { 3, 0 })  -- Line 3, col 0 (before const a)
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(4, pos[1], "Should jump from leading whitespace in TypeScript")
+end)
+
 -- Run all tests
 run_tests()

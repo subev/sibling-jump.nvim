@@ -262,6 +262,19 @@ local function get_node_at_cursor(bufnr)
   local row = cursor[1] - 1 -- Convert to 0-indexed
   local col = cursor[2]
 
+  -- Adjust column if cursor is on leading whitespace
+  -- This ensures we get the correct node (the statement, not its parent)
+  local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
+  local first_nonws_col = vim.fn.match(line, [[\S]])
+  local original_col = col
+  if first_nonws_col >= 0 and col < first_nonws_col then
+    -- Cursor is in leading whitespace, adjust to first non-whitespace
+    col = first_nonws_col
+  elseif first_nonws_col < 0 then
+    -- Line is all whitespace/empty, keep original column
+    -- (This will likely trigger the _on_whitespace or _on_comment logic)
+  end
+
   -- Get the smallest node at cursor
   local node = root:descendant_for_range(row, col, row, col)
   if not node then
@@ -562,6 +575,13 @@ local function get_node_at_cursor(bufnr)
 
     if is_meaningful_node(current) then
       local parent = current:parent()
+
+      -- Special case: For C#/Java, if we found variable_declaration but parent is local_declaration_statement or local_variable_declaration,
+      -- use the parent as the meaningful node instead (siblings are at that level)
+      if current:type() == "variable_declaration" and parent and (parent:type() == "local_declaration_statement" or parent:type() == "local_variable_declaration") then
+        current = parent
+        parent = current:parent()
+      end
 
       -- Check if we're inside a switch_case or switch_default with single statement
       if parent and (parent:type() == "switch_case" or parent:type() == "switch_default") then

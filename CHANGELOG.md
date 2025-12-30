@@ -1,5 +1,174 @@
 # Changelog: statement_jump.lua
 
+## 2025-12-31 - Fix: Leading Whitespace Navigation
+
+### Issue
+When the cursor was positioned on leading whitespace before a statement (column 0 or any position before the first non-whitespace character), navigation would operate at the wrong scope level. Instead of navigating within the current function, it would jump to sibling functions at the module level.
+
+**Example from real code:**
+```lua
+local function navigate_if_else_chain(if_node, current_pos, forward)
+  local else_clauses = collect_else_clauses(if_node)  -- Line 1040
+  
+  if #else_clauses == 0 then  -- Line 1043
+```
+
+- Cursor at line 1040, col 0 (before "local") → Press `<C-j>` → Would jump to line 1116 (next function) ❌
+- Should jump to line 1043 (next statement in same function) ✓
+
+### Root Cause
+Tree-sitter's `descendant_for_range()` returns the smallest node containing the position. When the cursor is in leading whitespace, it returns the **parent node** (e.g., `function_declaration`) instead of the statement inside the function. This caused navigation to happen at the wrong scope level.
+
+### Solution
+
+**1. Column Adjustment**
+Added logic to detect and adjust cursor column to the first non-whitespace character before getting the node:
+
+```lua
+-- Adjust column if cursor is on leading whitespace
+local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
+local first_nonws_col = vim.fn.match(line, [[\S]])
+if first_nonws_col >= 0 and col < first_nonws_col then
+  -- Cursor is in leading whitespace, adjust to first non-whitespace
+  col = first_nonws_col
+end
+```
+
+This ensures Tree-sitter finds the correct node (the statement, not its parent).
+
+**2. C#/Java Fix**
+Added special handling for `variable_declaration` nodes. In C#/Java, `variable_declaration` is a child of `local_declaration_statement`, but siblings are at the `local_declaration_statement` level:
+
+```lua
+-- Special case: For C#/Java, if we found variable_declaration but parent is local_declaration_statement,
+-- use the parent as the meaningful node instead (siblings are at that level)
+if current:type() == "variable_declaration" and parent and 
+   (parent:type() == "local_declaration_statement" or parent:type() == "local_variable_declaration") then
+  current = parent
+  parent = current:parent()
+end
+```
+
+### Test Coverage
+
+**Added 4 new tests:**
+1. "Leading whitespace: forward navigation" - Lua navigation from col 0
+2. "Leading whitespace: backward navigation" - Lua navigation from col 0
+3. "Leading whitespace: navigates within correct scope" - Verifies it stays within function
+4. "Leading whitespace: TypeScript navigation" - Verifies cross-language support
+
+**New fixture:** `tests/fixtures/leading_whitespace.lua`
+
+**Results:** All 136 tests pass (132 original + 4 new)
+
+### Behavior Changes
+
+**Before:**
+- Cursor on leading whitespace → jumps at wrong scope level (module/parent level)
+- JavaScript/TypeScript → no-op (doesn't navigate at all)
+
+**After:**
+- Cursor on leading whitespace → adjusts to first non-whitespace → navigates correctly within scope
+- Works uniformly across all languages (Lua, TypeScript, JavaScript, C#, Java, C)
+- Behaves as if user manually moved cursor to the statement
+
+### Impact
+- ✅ Fixes navigation from leading whitespace across all languages
+- ✅ Eases user workflow by automatically compensating for cursor position
+- ✅ Replaces no-op behavior in JS/TS with correct navigation
+- ✅ Maintains correct scope boundaries
+- ✅ All existing tests continue to pass
+
+---
+
+## 2025-12-31 - Feature: Lua Label Statement and If-Else Chain Navigation
+
+### Features
+
+**1. Label Statement Support**
+Added support for Lua goto labels like `::continue::`:
+
+```lua
+for i = 1, 10 do
+  if condition then
+    goto continue
+  end
+  process(i)
+  ::continue::  -- Now navigable!
+end
+```
+
+**2. If-Else-Elseif Chain Navigation**
+Full support for navigating through Lua if-else chains, similar to JavaScript/TypeScript:
+
+```lua
+if x > 20 then
+  print("a")       -- Line 7 - cursor here, press C-j
+elseif x > 10 then -- Line 9 - jumps here
+  print("b")
+elseif x > 5 then  -- Line 11 - press C-j again
+  print("c")
+else               -- Line 13 - press C-j again
+  print("d")
+end
+local after = 1    -- Line 16 - press C-j again
+```
+
+**3. Jump to Last Else on Backward Navigation**
+When jumping backward to an `if` statement that has `else`/`elseif` clauses, the cursor lands on the **last** clause:
+
+```lua
+local a = 1
+if x then
+  print("x")
+elseif y then
+  print("y")
+else
+  print("z")      -- Line 8
+end
+local b = 2       -- Line 10 - cursor here, press C-k → jumps to line 8 (else), not line 3 (if)
+```
+
+### Implementation
+
+**Added Node Types:**
+- `label_statement` - Lua goto labels
+- `elseif_statement` - Lua elseif branches  
+- `else_statement` - Lua else branches
+
+**Enhanced Functions:**
+- `navigate_if_else_chain()` - Extended to collect Lua alternatives
+- `is_within_if_else_chain()` - Extended to recognize Lua else nodes
+- Added Lua-specific block detection to prevent false matches inside consequence blocks
+
+**Key Difference from JavaScript:**
+- JavaScript: All else clauses nested inside each other
+- Lua: All alternatives (elseif/else) are direct children of the same `if_statement`
+- Solution: Different collection logic for each language
+
+### Test Coverage
+
+**Added 4 new tests:**
+1. "Lua labels: backward navigation from label"
+2. "Lua labels: forward navigation to label"
+3. "Lua if-else-elseif: forward navigation through chain to statements"
+4. "Lua if-else-elseif: backward from statement after chain jumps to last else"
+
+**New fixtures:**
+- Updated `tests/fixtures/lua_statements.lua` - Added label test case
+- `tests/fixtures/lua_if_else.lua` - If-else chain examples
+
+**Results:** All 132 tests pass (128 original + 4 new)
+
+### Impact
+- ✅ Adds Lua label statement navigation
+- ✅ Adds Lua if-else chain navigation (matching JS/TS behavior)
+- ✅ Intelligent last-else jumping on backward navigation
+- ✅ Proper scope handling (doesn't escape from blocks)
+- ✅ All existing tests continue to pass
+
+---
+
 ## 2025-12-30 - Fix: Return Statement in Switch Case No Longer Escapes to Sibling Cases
 
 ### Issue
