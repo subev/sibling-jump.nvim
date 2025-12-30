@@ -1,5 +1,173 @@
 # Changelog: statement_jump.lua
 
+## 2025-12-30 - Feature: Switch Case Navigation
+
+### Overview
+Added comprehensive support for navigating between switch case clauses, with intelligent context handling for both case-level and statement-level navigation.
+
+### Features
+
+**Two Navigation Contexts:**
+
+1. **Parent Context (Outside Switch):**
+   - When navigating from statements before/after the switch
+   - Entire `switch` statement treated as a single navigation unit
+   - Cursor lands on the `switch` keyword
+   - Preserves existing navigation behavior (no breaking changes)
+
+2. **Case Context (Inside Switch):**
+   - When cursor is inside a `case` or `default` clause
+   - Navigate between sibling case/default clauses
+   - Cursor lands on `case` or `default` keyword
+   - No-op at first case (backward) and last case (forward)
+   - Does NOT escape switch boundaries
+
+**Intelligent Sub-Context Detection:**
+- Statements within a case create their own navigation context
+- Multiple statements in a case: navigate between those statements first
+- Single statement in a case: navigate to next/previous case
+- Empty cases (fallthrough) are fully navigable
+- Block-scoped cases (`case "a": { ... }`) work correctly
+- Nested switches: inner and outer switches navigate independently
+
+### Examples
+
+**Basic Case Navigation:**
+```typescript
+switch (value) {
+  case "a":      // ← cursor here, press <C-j>
+    return 1;
+  case "b":      // jumps here
+    return 2;
+  default:       // press <C-j> again
+    return 0;
+}
+```
+
+**Statement Navigation Within Case:**
+```typescript
+switch (value) {
+  case "a":
+    const x = 1;   // ← cursor here, press <C-j>
+    const y = 2;   // jumps here (within same case)
+    return x + y;  // press <C-j> again, jumps here
+  case "b":        // press <C-j> once more, NOW jumps to next case
+    return 3;
+}
+```
+
+**Navigation from Parent Context:**
+```typescript
+const before = 1;  // ← cursor here, press <C-j>
+switch (value) {   // jumps to 'switch' keyword
+  case "a": return 1;
+  case "b": return 2;
+}
+const after = 2;   // press <C-j> from switch, jumps here
+```
+
+**Empty Cases (Fallthrough):**
+```typescript
+switch (value) {
+  case "a":      // ← navigable
+  case "b":      // ← navigable
+    return 1;
+  case "c":      // ← navigable
+    return 2;
+}
+```
+
+### Implementation
+
+**New Helper Functions:**
+- `collect_switch_cases(switch_node)` - Collects all case/default clauses
+- `get_case_keyword_position(case_node)` - Gets cursor position for case/default keyword
+- `is_in_switch_case(node)` - Detects if cursor is in a case clause, with intelligent sub-context detection
+- `navigate_switch_cases(switch_node, current_pos, forward)` - Handles case-to-case navigation
+
+**Node Types Added:**
+- `switch_case` - Individual case clauses
+- `switch_default` - Default clause
+- Already had: `switch_statement`
+
+**Integration:**
+- Added as THIRD check in main jump function (after method chains and if-else chains)
+- Prioritizes statement navigation within cases over case navigation
+- Falls through to regular navigation at boundaries
+
+**Files Modified:**
+- `lua/sibling_jump/init.lua` (~170 lines added)
+  - Added 4 helper functions
+  - Added 2 node types to meaningful_types
+  - Integrated into main jump function with intelligent precedence handling
+
+### Test Coverage
+
+**Added 10 comprehensive test cases:**
+1. Forward navigation through cases
+2. Backward navigation through cases  
+3. No-op at first case
+4. No-op at last case
+5. Navigation from parent context (lands on switch)
+6. Empty cases (fallthrough)
+7. Block-scoped cases (`case "a": { ... }`)
+8. Statement navigation within case (multiple statements)
+9. Single case no-op
+10. Nested switch inner navigation
+
+**New Test Fixtures:**
+- `tests/fixtures/switch_cases.ts` (125 lines)
+- `tests/fixtures/switch_cases.js` (JavaScript version)
+
+**Results:** All 109 tests pass (99 original + 10 new)
+
+### Verification
+
+**Automated tests:**
+```bash
+bash tests/test_runner.sh
+# Results: 109 passed, 0 failed
+```
+
+**Test Coverage:**
+- Basic multi-case switches
+- Empty/fallthrough cases
+- Block-scoped cases
+- Multiple statements within cases
+- Single-statement cases
+- Nested switches
+- Parent context navigation
+- Boundary conditions (first/last case)
+
+### Impact
+
+- ✅ Adds full switch case navigation support
+- ✅ Intelligent context detection (case-level vs statement-level)
+- ✅ Respects navigation boundaries (no escape from switch)
+- ✅ Works with all case patterns (empty, block-scoped, multi-statement)
+- ✅ Handles nested switches correctly
+- ✅ No breaking changes to existing functionality
+- ✅ All existing tests continue to pass
+
+### Design Decisions
+
+**Priority Order:**
+1. Statements within a case (if multiple statements exist)
+2. Case-to-case navigation (when single statement or on case keyword)
+3. Regular statement navigation (at switch boundaries)
+
+**Landing Position:**
+- Case navigation: cursor lands on `case` or `default` keyword
+- Makes it easy to see which case you're on
+- Consistent with if-else chain behavior
+
+**Boundary Behavior:**
+- No-op at first case when going backward
+- No-op at last case when going forward
+- Prevents escaping the switch context accidentally
+
+---
+
 ## 2025-12-30 - Bug Fix: Navigation Escapes Single Statement in If Block
 
 ### Issue

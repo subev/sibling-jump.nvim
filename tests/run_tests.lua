@@ -1240,5 +1240,178 @@ test("Single statement in if: complex case from real code", function()
   assert_eq(initial_pos[1], pos[1], "Should not jump to const before if when inside if block")
 end)
 
+-- Switch case navigation
+test("Switch cases: forward navigation through cases", function()
+  vim.cmd("edit tests/fixtures/switch_cases.ts")
+  
+  -- Start at case "a" (line 8)
+  vim.api.nvim_win_set_cursor(0, {8, 4})
+  
+  -- Jump to case "b" (line 10)
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(10, pos[1], "Should jump from case 'a' (L8) to case 'b' (L10)")
+  
+  -- Jump to case "c" (line 12)
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(12, pos[1], "Should jump from case 'b' (L10) to case 'c' (L12)")
+  
+  -- Jump to default (line 14)
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(14, pos[1], "Should jump from case 'c' (L12) to default (L14)")
+end)
+
+test("Switch cases: backward navigation through cases", function()
+  vim.cmd("edit tests/fixtures/switch_cases.ts")
+  
+  -- Start at default (line 14)
+  vim.api.nvim_win_set_cursor(0, {14, 4})
+  
+  -- Jump backward to case "c" (line 12)
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(12, pos[1], "Should jump from default (L14) to case 'c' (L12)")
+  
+  -- Jump backward to case "b" (line 10)
+  sibling_jump.jump_to_sibling({ forward = false })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(10, pos[1], "Should jump from case 'c' (L12) to case 'b' (L10)")
+  
+  -- Jump backward to case "a" (line 8)
+  sibling_jump.jump_to_sibling({ forward = false })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(8, pos[1], "Should jump from case 'b' (L10) to case 'a' (L8)")
+end)
+
+test("Switch cases: no-op at first case", function()
+  vim.cmd("edit tests/fixtures/switch_cases.ts")
+  
+  -- Start at first case "a" (line 8)
+  vim.api.nvim_win_set_cursor(0, {8, 4})
+  local initial_pos = vim.api.nvim_win_get_cursor(0)
+  
+  -- Try to jump backward (should be no-op)
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(initial_pos[1], pos[1], "Should not move from first case")
+end)
+
+test("Switch cases: no-op at last case", function()
+  vim.cmd("edit tests/fixtures/switch_cases.ts")
+  
+  -- Start at default (last case, line 14)
+  vim.api.nvim_win_set_cursor(0, {14, 4})
+  local initial_pos = vim.api.nvim_win_get_cursor(0)
+  
+  -- Try to jump forward (should be no-op)
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(initial_pos[1], pos[1], "Should not move from last case (default)")
+end)
+
+test("Switch cases: navigate from parent context lands on switch", function()
+  vim.cmd("edit tests/fixtures/switch_cases.ts")
+  
+  -- Start at statement before switch (line 5)
+  vim.api.nvim_win_set_cursor(0, {5, 2})
+  
+  -- Jump forward to switch statement (line 7)
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(7, pos[1], "Should jump to switch statement (L7)")
+  
+  -- Jump forward to statement after switch (line 18)
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(18, pos[1], "Should jump from switch (L7) to statement after (L18)")
+end)
+
+test("Switch cases: empty cases (fallthrough)", function()
+  vim.cmd("edit tests/fixtures/switch_cases.ts")
+  
+  -- Start at case "a" (line 26, empty case)
+  vim.api.nvim_win_set_cursor(0, {26, 4})
+  
+  -- Jump to case "b" (line 27, also empty)
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(27, pos[1], "Should jump from empty case 'a' (L26) to case 'b' (L27)")
+  
+  -- Jump to case "c" with body (line 29)
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(29, pos[1], "Should jump from case 'b' (L27) to case 'c' (L29)")
+end)
+
+test("Switch cases: block-scoped cases", function()
+  vim.cmd("edit tests/fixtures/switch_cases.ts")
+  
+  -- Start at case "a" with block scope (line 43)
+  vim.api.nvim_win_set_cursor(0, {43, 4})
+  
+  -- Jump to case "b" (line 47)
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(47, pos[1], "Should jump from case 'a' (L43) to case 'b' (L47)")
+  
+  -- Jump to default (line 51)
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(51, pos[1], "Should jump from case 'b' (L47) to default (L51)")
+end)
+
+test("Switch cases: navigate statements within case", function()
+  vim.cmd("edit tests/fixtures/switch_cases.ts")
+  
+  -- Start at first statement inside case "a" (line 65)
+  vim.api.nvim_win_set_cursor(0, {65, 6})
+  
+  -- Jump to second statement in same case (line 66)
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(66, pos[1], "Should jump between statements within case 'a'")
+  
+  -- Jump to return statement (line 67)
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(67, pos[1], "Should jump to return within same case")
+end)
+
+test("Switch cases: single case no-op", function()
+  vim.cmd("edit tests/fixtures/switch_cases.ts")
+  
+  -- Start at default in single case switch (line 106)
+  vim.api.nvim_win_set_cursor(0, {106, 4})
+  local initial_pos = vim.api.nvim_win_get_cursor(0)
+  
+  -- Try to jump (should be no-op since only one case)
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(initial_pos[1], pos[1], "Should not move when only one case")
+  
+  sibling_jump.jump_to_sibling({ forward = false })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(initial_pos[1], pos[1], "Should not move when only one case")
+end)
+
+test("Switch cases: nested switch inner navigation", function()
+  vim.cmd("edit tests/fixtures/switch_cases.ts")
+  
+  -- Start at inner switch case "x" (line 85)
+  vim.api.nvim_win_set_cursor(0, {85, 8})
+  
+  -- Jump to inner case "y" (line 87)
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(87, pos[1], "Should navigate within inner switch cases")
+  
+  -- Jump to inner default (line 89)
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(89, pos[1], "Should jump to inner default")
+end)
+
 -- Run all tests
 run_tests()
