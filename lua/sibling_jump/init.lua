@@ -36,6 +36,21 @@ local function is_skippable_node(node)
   if node_type:match("comment") then
     return true
   end
+  
+  -- Skip comment delimiters (language-agnostic)
+  local comment_delimiters = {
+    ["--"] = true,        -- Lua
+    ["//"] = true,        -- C/C++/Java/C#/JS/TS
+    ["/*"] = true,        -- C-style block comment start
+    ["*/"] = true,        -- C-style block comment end
+    ["#"] = true,         -- Python/Shell
+    ["<!--"] = true,      -- HTML/XML
+    ["-->"] = true,       -- HTML/XML
+    ["comment_content"] = true,  -- Generic comment content node
+  }
+  if comment_delimiters[node_type] then
+    return true
+  end
 
   -- Skip punctuation and delimiters
   local punctuation = {
@@ -306,10 +321,24 @@ local function get_node_at_cursor(bufnr)
     -- If no meaningful children found, fall through to normal logic
   end
 
+  -- Check if we're starting on a comment or empty line
+  local started_on_comment = node and (node:type():match("comment") or node:type() == "--" or node:type() == "//" or node:type() == "/*" or node:type() == "*/" or node:type() == "#")
+  local started_on_empty_line = node and node:type() == "chunk"
+  
   -- Walk up the tree until we find a "meaningful" node that represents
   -- a complete unit we want to jump between (like a property_signature, statement, etc.)
   local current = node
   while current do
+    -- Special case: if we started on a comment/empty line and reached a container,
+    -- stop here and handle in fallback (don't walk up to find meaningful parent)
+    if (started_on_comment or started_on_empty_line) then
+      local current_type = current:type()
+      local is_container = current_type == "block" or current_type == "statement_block" or current_type == "compound_statement" or current_type == "chunk"
+      if is_container then
+        -- Don't continue walking up - we want to search THIS container's children
+        break
+      end
+    end
     -- Special case: if current is a type_identifier inside a type_alias_declaration or interface_declaration,
     -- use the declaration as the navigation unit (not the type_identifier)
     if current:type() == "type_identifier" then
@@ -540,11 +569,58 @@ local function get_node_at_cursor(bufnr)
 
   -- Fallback: if we didn't find a meaningful node, just use the first non-skippable node
   current = node
+  
   while current and is_skippable_node(current) do
     current = current:parent()
   end
 
   if current then
+    local current_type = current:type()
+    
+    -- Special case: if we started on a comment or empty line,
+    -- we need to find the closest meaningful node to "escape" from the comment
+    if started_on_comment or started_on_empty_line or current_type == "chunk" then
+      -- Get the parent container to search for meaningful siblings
+      -- If we walked up from a comment, current is already the parent container (block/chunk)
+      -- If we're at chunk level (empty line), search chunk itself
+      local search_parent = current
+      
+      if search_parent then
+        -- Collect all meaningful children
+        local meaningful_children = {}
+        for child in search_parent:iter_children() do
+          if is_meaningful_node(child) then
+            table.insert(meaningful_children, child)
+          end
+        end
+        
+        if #meaningful_children > 0 then
+          -- Find closest meaningful nodes before and after cursor
+          local closest_before = nil
+          local closest_after = nil
+          
+          for _, child in ipairs(meaningful_children) do
+            local child_row = child:start()
+            if child_row < row then
+              closest_before = child  -- Keep updating to get the last one before
+            elseif child_row > row and not closest_after then
+              closest_after = child  -- Take the first one after
+            end
+          end
+          
+          -- Return a special marker that tells jump_to_sibling we're on a comment
+          -- and provides both direction options
+          return {
+            _on_comment = true,
+            closest_before = closest_before,
+            closest_after = closest_after,
+            parent = search_parent,
+            cursor_row = row,
+          }, search_parent
+        end
+      end
+    end
+    
     return current, current:parent()
   end
 
@@ -1336,6 +1412,27 @@ function M.jump_to_sibling(opts)
         end
       end
       -- Always return after handling whitespace (no sibling navigation)
+      return
+    end
+    
+    -- Special case: if we're on a comment or empty line, jump to nearest meaningful node
+    if type(current_node) == "table" and current_node._on_comment then
+      local target_node = forward and current_node.closest_after or current_node.closest_before
+      
+      if target_node then
+        -- Add current position to jump list before moving
+        vim.cmd("normal! m'")
+        
+        -- Get the appropriate cursor position (adjusted for JSX elements)
+        local target_row, target_col = get_jsx_tag_position(target_node)
+        vim.api.nvim_win_set_cursor(0, { target_row + 1, target_col })
+        
+        -- Center the screen on the new position (if enabled)
+        if config.center_on_jump then
+          vim.cmd("normal! zz")
+        end
+      end
+      -- Always return after handling comment escape (no sibling navigation)
       return
     end
 

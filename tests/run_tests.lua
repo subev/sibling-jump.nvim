@@ -450,11 +450,11 @@ end)
 
 test("Arrays: single element is no-op", function()
   vim.cmd("edit tests/fixtures/arrays.ts")
-  vim.api.nvim_win_set_cursor(0, { 19, 16 }) -- On single element array
+  vim.api.nvim_win_set_cursor(0, { 20, 16 }) -- On single element array [1]
 
   sibling_jump.jump_to_sibling({ forward = true })
   local pos = vim.api.nvim_win_get_cursor(0)
-  assert_eq(19, pos[1], "Should not move from single element")
+  assert_eq(20, pos[1], "Should not move from single element")
 end)
 
 test("Function params: forward navigation", function()
@@ -1582,6 +1582,78 @@ test("C#: local declarations", function()
   sibling_jump.jump_to_sibling({ forward = true })
   local pos = vim.api.nvim_win_get_cursor(0)
   assert_eq(8, pos[1], "Should jump from int a (L7) to int b (L8)")
+end)
+
+-- ============================================================================
+-- COMMENT NAVIGATION TESTS
+-- ============================================================================
+
+test("Comment escape: forward from top comment", function()
+  vim.cmd("edit tests/fixtures/lua_comments.lua")
+  vim.api.nvim_win_set_cursor(0, { 1, 2 })  -- on line 1 comment
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(5, pos[1], "Should jump from comment (L1) to local M = {} (L5)")
+end)
+
+test("Comment escape: forward from middle comment", function()
+  vim.cmd("edit tests/fixtures/lua_comments.lua")
+  vim.api.nvim_win_set_cursor(0, { 7, 2 })  -- on line 7 comment
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(9, pos[1], "Should jump from comment (L7) to function (L9)")
+end)
+
+test("Comment escape: backward from middle comment", function()
+  vim.cmd("edit tests/fixtures/lua_comments.lua")
+  vim.api.nvim_win_set_cursor(0, { 7, 2 })  -- on line 7 comment
+
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(5, pos[1], "Should jump from comment (L7) back to local M = {} (L5)")
+end)
+
+test("Comment escape: forward from comment inside function", function()
+  vim.cmd("edit tests/fixtures/lua_comments.lua")
+  vim.api.nvim_win_set_cursor(0, { 12, 2 })  -- on line 12 comment inside function
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(14, pos[1], "Should jump from comment (L12) to local b (L14)")
+end)
+
+test("Comment escape: backward from comment inside function", function()
+  vim.cmd("edit tests/fixtures/lua_comments.lua")
+  vim.api.nvim_win_set_cursor(0, { 12, 2 })  -- on line 12 comment inside function
+
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(10, pos[1], "Should jump from comment (L12) back to local a (L10)")
+end)
+
+test("Comment escape: forward from empty line", function()
+  vim.cmd("edit tests/fixtures/lua_comments.lua")
+  vim.api.nvim_win_set_cursor(0, { 11, 0 })  -- on line 11 empty line
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(14, pos[1], "Should jump from empty line (L11) to local b (L14), skipping comment")
+  
+  -- Jump again to next statement
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(15, pos[1], "Should jump from local b (L14) to local c (L15)")
+end)
+
+test("Comment escape: backward from empty line", function()
+  vim.cmd("edit tests/fixtures/lua_comments.lua")
+  vim.api.nvim_win_set_cursor(0, { 11, 0 })  -- on line 11 empty line
+
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(10, pos[1], "Should jump from empty line (L11) back to local a (L10)")
 end)
 
 -- Run all tests
