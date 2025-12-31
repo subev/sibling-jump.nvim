@@ -18,18 +18,20 @@ local function assert_eq(expected, actual, message)
 end
 
 local function run_tests()
-  print("=== Running sibling_jump tests ===\n")
+  print("=== Running sibling_jump tests ===")
+  print("")
 
   for _, t in ipairs(tests) do
-    io.write("Testing: " .. t.name .. " ... ")
-
     local ok, err = pcall(t.fn)
 
     if ok then
-      print("✓ PASS")
+      -- Format with fixed width for alignment
+      local status = "✓ PASS"
+      print(string.format("%-90s %s", t.name, status))
       passed = passed + 1
     else
-      print("✗ FAIL")
+      local status = "✗ FAIL"
+      print(string.format("%-90s %s", t.name, status))
       print("  Error: " .. tostring(err))
       failed = failed + 1
     end
@@ -38,7 +40,8 @@ local function run_tests()
     vim.cmd("bufdo! bwipeout!")
   end
 
-  print(string.format("\n=== Results: %d passed, %d failed ===", passed, failed))
+  print("")
+  print(string.format("=== Results: %d passed, %d failed ===", passed, failed))
 
   if failed > 0 then
     vim.cmd("cquit 1")
