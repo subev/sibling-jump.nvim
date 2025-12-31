@@ -268,6 +268,8 @@ All tests pass with Tree-sitter support for TypeScript/JavaScript/JSX/TSX.
 
 Contributions are welcome! Please feel free to submit issues or pull requests.
 
+**See [ROADMAP.md](ROADMAP.md)** for planned features and future direction.
+
 ## License
 
 MIT
