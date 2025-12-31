@@ -7,7 +7,7 @@ This document provides comprehensive guidelines for AI assistants working on sib
 ## Quick Start
 
 1. **Read the architecture**: Start with `ARCHITECTURE.md` to understand the codebase structure
-2. **Run tests**: `bash tests/test_runner.sh` - All 136 tests must pass before and after changes
+2. **Run tests**: `bash tests/test_runner.sh` - All tests must pass before and after changes
 3. **Check current branch**: Work on feature branches, not main directly
 
 ## Project Context
@@ -45,7 +45,7 @@ lua/sibling_jump/
 # ALWAYS run tests after ANY change
 bash tests/test_runner.sh
 
-# All 136 tests MUST pass
+# All tests MUST pass
 # No exceptions
 ```
 
@@ -610,7 +610,7 @@ When working on this codebase and you're unsure:
 
 Before considering any change complete:
 
-- [ ] All 136 tests pass (`bash tests/test_runner.sh`)
+- [ ] All tests pass (`bash tests/test_runner.sh`)
 - [ ] No new warnings or errors
 - [ ] Public API unchanged (or documented breaking changes)
 - [ ] Added tests for new functionality
