@@ -61,72 +61,75 @@ function M.jump_to_sibling(opts)
     local row = cursor[1] - 1
     local col = cursor[2]
 
-    -- Get tree and node for chain detection
-    local lang = vim.treesitter.language.get_lang(vim.bo[bufnr].filetype)
-    if lang then
-      local ok, parser = pcall(vim.treesitter.get_parser, bufnr, lang)
-      if ok and parser then
-        local tree = parser:parse()[1]
-        if tree then
-          local root = tree:root()
-          local node = root:descendant_for_range(row, col, row, col)
-
-          -- FIRST: Check if we're in a method chain
-          if node then
-            local in_chain, property_node = method_chains.detect(node)
-            if in_chain then
-              local target_prop = method_chains.navigate(property_node, forward)
-              if target_prop then
-                -- Successfully found target in chain
-                vim.cmd("normal! m'")
-                local target_row, target_col = target_prop:start()
-                vim.api.nvim_win_set_cursor(0, { target_row + 1, target_col })
-                if config.center_on_jump then
-                  vim.cmd("normal! zz")
-                end
-                -- Continue to next iteration for count support
-                goto continue
-              else
-                -- At boundary of chain, do nothing (no-op)
-                return
-              end
-            end
-
-            -- SECOND: Check if we're in an if-else-if chain
-            local in_if_else, if_node, current_pos = if_else_chains.detect(node)
-            if in_if_else then
-              local target_node, target_row, target_col = if_else_chains.navigate(if_node, current_pos, forward, get_sibling_node)
-              if target_node then
-                -- Successfully found target in if-else chain
-                vim.cmd("normal! m'")
-                vim.api.nvim_win_set_cursor(0, { target_row + 1, target_col })
-                if config.center_on_jump then
-                  vim.cmd("normal! zz")
-                end
-                -- Continue to next iteration for count support
-                goto continue
-              end
-              -- At boundary of chain, fall through to regular navigation
-            end
-
-            -- THIRD: Check if we're in a switch case chain
-            local in_switch, switch_node, current_case_pos = switch_cases.detect(node)
-            if in_switch then
-              local target_node, target_row, target_col = switch_cases.navigate(switch_node, current_case_pos, forward)
-              if target_node then
-                -- Successfully found target in switch case chain
-                vim.cmd("normal! m'")
-                vim.api.nvim_win_set_cursor(0, { target_row + 1, target_col })
-                if config.center_on_jump then
-                  vim.cmd("normal! zz")
-                end
-                -- Continue to next iteration for count support
-                goto continue
-              end
-              -- At boundary of switch cases, fall through to regular navigation
-            end
+    -- Try special navigation modes (requires treesitter node)
+    -- Use explicit checks instead of deep nesting
+    local node
+    do
+      local lang = vim.treesitter.language.get_lang(vim.bo[bufnr].filetype)
+      if lang then
+        local ok, parser = pcall(vim.treesitter.get_parser, bufnr, lang)
+        if ok and parser then
+          local tree = parser:parse()[1]
+          if tree then
+            local root = tree:root()
+            node = root:descendant_for_range(row, col, row, col)
           end
         end
+      end
+    end
+
+    -- Check special modes if we have a valid node
+    if node then
+      -- FIRST: Check if we're in a method chain
+      local in_chain, property_node = method_chains.detect(node)
+      if in_chain then
+        local target_prop = method_chains.navigate(property_node, forward)
+        if target_prop then
+          -- Successfully found target in chain
+          vim.cmd("normal! m'")
+          local target_row, target_col = target_prop:start()
+          vim.api.nvim_win_set_cursor(0, { target_row + 1, target_col })
+          if config.center_on_jump then
+            vim.cmd("normal! zz")
+          end
+          goto continue
+        else
+          -- At boundary of chain, do nothing (no-op)
+          return
+        end
+      end
+
+      -- SECOND: Check if we're in an if-else-if chain
+      local in_if_else, if_node, current_pos = if_else_chains.detect(node)
+      if in_if_else then
+        local target_node, target_row, target_col =
+          if_else_chains.navigate(if_node, current_pos, forward, get_sibling_node)
+        if target_node then
+          -- Successfully found target in if-else chain
+          vim.cmd("normal! m'")
+          vim.api.nvim_win_set_cursor(0, { target_row + 1, target_col })
+          if config.center_on_jump then
+            vim.cmd("normal! zz")
+          end
+          goto continue
+        end
+        -- At boundary of chain, fall through to regular navigation
+      end
+
+      -- THIRD: Check if we're in a switch case chain
+      local in_switch, switch_node, current_case_pos = switch_cases.detect(node)
+      if in_switch then
+        local target_node, target_row, target_col = switch_cases.navigate(switch_node, current_case_pos, forward)
+        if target_node then
+          -- Successfully found target in switch case chain
+          vim.cmd("normal! m'")
+          vim.api.nvim_win_set_cursor(0, { target_row + 1, target_col })
+          if config.center_on_jump then
+            vim.cmd("normal! zz")
+          end
+          goto continue
+        end
+        -- At boundary of switch cases, fall through to regular navigation
       end
     end
 

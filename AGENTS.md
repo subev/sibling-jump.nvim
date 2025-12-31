@@ -256,6 +256,57 @@ end
 - **Comments**: Use `--` for single line, explain *why* not *what*
 - **Function names**: `snake_case` for local, `M.snake_case` for exports
 
+### Avoid Deep Nesting
+
+❌ **Bad** (deep nesting):
+```lua
+if condition1 then
+  if condition2 then
+    if condition3 then
+      if condition4 then
+        -- actual work
+      end
+    end
+  end
+end
+```
+
+✅ **Good** (early returns or scoped blocks):
+```lua
+-- Option 1: Early returns with guard clauses
+if not condition1 then return end
+if not condition2 then return end
+if not condition3 then return end
+if not condition4 then return end
+-- actual work
+
+-- Option 2: Scoped block with combined conditions
+local result
+do
+  if not condition1 then goto skip end
+  if not condition2 then goto skip end
+  result = do_work()
+  ::skip::
+end
+
+-- Option 3: Use `do` blocks to scope variable initialization
+local node
+do
+  local lang = get_lang()
+  if lang then
+    local ok, parser = pcall(get_parser, lang)
+    if ok and parser then
+      node = parser:get_node()
+    end
+  end
+end
+if node then
+  -- work with node
+end
+```
+
+**Rationale**: Deep nesting (>3 levels) makes code hard to read and reason about. Prefer early returns, guard clauses, or scoped blocks to keep indentation shallow.
+
 ### Commenting Philosophy
 
 ✅ **Good comments** (explain why):
