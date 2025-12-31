@@ -255,12 +255,30 @@ end
 
 ### Fixing a Bug
 
-1. **Create minimal reproduction**: Add fixture file showing the bug
-2. **Write failing test**: Test that reproduces the bug
-3. **Identify root cause**: Use Tree-sitter playground and debug prints
-4. **Fix**: Make the test pass
-5. **Verify no regressions**: Run full test suite
-6. **Document**: Add comment explaining the fix if non-obvious
+**IMPORTANT**: Follow this order strictly. Do NOT fix the bug before writing the test!
+
+1. **Create minimal reproduction**: Add fixture file showing the bug (or use existing code)
+2. **Write failing test**: Test that reproduces the bug (MUST do this BEFORE fixing!)
+   ```lua
+   test("Bug description", function()
+     vim.cmd("edit tests/fixtures/problem.ts")
+     vim.api.nvim_win_set_cursor(0, {10, 5})
+     sibling_jump.jump_to_sibling({ forward = true })
+     local pos = vim.api.nvim_win_get_cursor(0)
+     assert_eq(12, pos[1], "Should jump to line 12")
+   end)
+   ```
+3. **Run test** - Verify it fails: `bash tests/test_runner.sh`
+4. **Identify root cause**: Use Tree-sitter playground and debug prints
+5. **Fix**: Make the test pass
+6. **Verify no regressions**: Run full test suite (all tests must pass)
+7. **Document**: Add comment explaining the fix if non-obvious
+
+**Why test-first?** The test serves as:
+- Proof the bug exists
+- Specification of correct behavior  
+- Regression prevention for the future
+- Validation that the fix actually works
 
 ## Code Style
 

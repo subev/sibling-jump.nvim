@@ -73,7 +73,8 @@ function M.detect(node)
   end
 
   -- Walk up to find if_statement or else_clause
-  -- We want to find the OUTERMOST if_statement that contains the cursor
+  -- We want to find the OUTERMOST if_statement that contains the cursor AND has else clauses
+  -- However, if we find an inner if_statement with else clauses, prefer that over continuing up
   local current = node
   local depth = 0
   local found_if = nil
@@ -81,8 +82,26 @@ function M.detect(node)
 
   while current and depth < 20 do
     if current:type() == "if_statement" then
-      -- Found an if_statement, but continue looking for outer ones
-      found_if = current
+      -- Found an if_statement
+      -- Check if this if_statement has else/elseif children (Lua-style check)
+      local has_else_children = false
+      for i = 0, current:child_count() - 1 do
+        local child = current:child(i)
+        if child:type() == "elseif_statement" or child:type() == "else_statement" or child:type() == "else_clause" then
+          has_else_children = true
+          break
+        end
+      end
+      
+      -- If this if has else clauses, use it and stop searching
+      -- Otherwise, keep walking up to find outer if statements
+      if has_else_children and not found_if then
+        found_if = current
+        -- Don't break yet - continue to check if it's nested in an else_clause
+      elseif not found_if then
+        found_if = current
+      end
+      
       current = current:parent()
       depth = depth + 1
     elseif current:type() == "else_clause" or current:type() == "elseif_statement" or current:type() == "else_statement" then

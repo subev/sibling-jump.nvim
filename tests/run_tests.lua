@@ -1628,6 +1628,15 @@ test("Lua if-else-elseif: backward from statement after chain jumps to last else
   assert_eq(13, pos[1], "Should jump from return (L17) to else (L13), not to if")
 end)
 
+test("Lua nested if-elseif: navigate inner chain not outer", function()
+  vim.cmd("edit lua/sibling_jump/node_finder.lua")
+  vim.api.nvim_win_set_cursor(0, { 188, 8 }) -- On nested 'if parent and parent:type() == "pair"'
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(207, pos[1], "Should jump from nested if (L188) to its elseif (L207), not outer if's siblings")
+end)
+
 -- ============================================================================
 -- JAVA TESTS (Basic Support)
 -- ============================================================================
