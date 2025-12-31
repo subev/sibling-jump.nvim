@@ -51,7 +51,17 @@ bash tests/test_runner.sh
 
 **Why**: This plugin has complex interactions with Tree-sitter AST. A seemingly minor change can break navigation in unexpected contexts.
 
-### 2. Never Break Backward Compatibility
+### 2. Update Documentation as Code Evolves
+
+**When making significant changes:**
+- Update `ARCHITECTURE.md` if module structure or data flow changes
+- Update `CHANGELOG.md` with user-facing changes
+- Update `AGENTS.md` if development workflow changes
+- Avoid hardcoding numbers (test counts, line counts) - they become stale
+
+**Documentation should reflect reality, not history.**
+
+### 3. Never Break Backward Compatibility
 
 The public API in `init.lua` must remain stable:
 - `M.setup(opts)` - Same signature
@@ -61,14 +71,14 @@ The public API in `init.lua` must remain stable:
 
 **Internal modules can change freely**, but public API is sacred.
 
-### 3. Don't Use Plenary for Tests
+### 4. Don't Use Plenary for Tests
 
 ❌ **DO NOT** add plenary.nvim as a test dependency
 ✅ **DO** use the existing direct test runner (`tests/run_tests.lua`)
 
 **Why**: Plenary's test isolation breaks Tree-sitter parser access. Our direct runner preserves the full Neovim environment.
 
-### 4. Module Naming Convention
+### 5. Module Naming Convention
 
 - **Repository**: `sibling-jump.nvim` (hyphen)
 - **Lua modules**: `sibling_jump` (underscore)
@@ -88,13 +98,18 @@ git checkout -b feature/your-feature
 # 3. Run tests continuously
 bash tests/test_runner.sh
 
-# 4. Commit with descriptive message
+# 4. Ask user before committing
+# DON'T auto-commit! Always ask user first.
+
+# 5. Commit with user approval
 git add -A
 git commit -m "feat: add description"
 
-# 5. Push when all tests pass
+# 6. Push when all tests pass
 git push origin feature/your-feature
 ```
+
+**IMPORTANT**: Never auto-commit changes. Always ask the user before creating commits. Show a summary of changes and wait for explicit approval.
 
 ### Test-Driven Development
 

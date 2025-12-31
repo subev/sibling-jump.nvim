@@ -26,3 +26,10 @@ const nested = {
     inner: 123,
   },
 };
+
+// Object with shorthand properties
+const shorthand = {
+  registered,
+  scenario,
+  normalProp: value,
+};

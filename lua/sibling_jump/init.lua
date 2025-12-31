@@ -8,8 +8,6 @@
 --     center_on_jump = false,     -- Whether to center screen after each jump (default: false)
 --   })
 
-local config_module = require("sibling_jump.config")
-local utils = require("sibling_jump.utils")
 local navigation = require("sibling_jump.navigation")
 local node_finder = require("sibling_jump.node_finder")
 local method_chains = require("sibling_jump.special_modes.method_chains")
@@ -33,19 +31,12 @@ local stored_config = {
 -- Track which buffers have sibling-jump enabled
 local enabled_buffers = {}
 
--- Alias utility functions for backward compatibility
-local is_comment_node = utils.is_comment_node
-local is_skippable_node = utils.is_skippable_node
-local is_meaningful_node = utils.is_meaningful_node
-
 -- Alias for backward compatibility
 local get_sibling_node = navigation.get_sibling_node
-
 
 -- Collect all else clauses in an if-else-if chain
 -- Returns: list of else_clause nodes (in order from first to last)
 -- Note: This is for JavaScript/TypeScript only. Lua uses a different approach.
-
 
 -- Main jump function
 function M.jump_to_sibling(opts)
@@ -193,6 +184,8 @@ function M.jump_to_sibling(opts)
 
     -- Jump to target or do nothing (no notification)
     if target_node then
+      local target_row, target_col
+
       -- Special case: if target is an if_statement with else clauses and we're going backward,
       -- jump to the last else clause instead of the if
       if not forward and target_node:type() == "if_statement" then
@@ -226,7 +219,7 @@ function M.jump_to_sibling(opts)
           end
           return nil
         end
-        
+
         local last_else = find_last_else(target_node)
         if last_else then
           target_node = last_else
@@ -238,7 +231,6 @@ function M.jump_to_sibling(opts)
       vim.cmd("normal! m'")
 
       -- Get the appropriate cursor position (adjusted for JSX elements)
-      local target_row, target_col
       if not target_row then
         target_row, target_col = positioning.get_target_position(target_node)
       end
@@ -330,7 +322,7 @@ function M.status_for_buffer(bufnr)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
 
   local status = enabled_buffers[bufnr] and "enabled" or "disabled"
-  local filetype = vim.api.nvim_buf_get_option(bufnr, "filetype")
+  local filetype = vim.bo[bufnr].filetype
 
   vim.notify(
     string.format("sibling-jump: %s for buffer %d (filetype: %s)", status, bufnr, filetype),

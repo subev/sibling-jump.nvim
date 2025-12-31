@@ -401,6 +401,46 @@ test("Context boundaries: inside method chain value works", function()
   assert_eq(14, pos[1], "Should navigate within method chain value")
 end)
 
+test("Object properties: shorthand property forward navigation", function()
+  vim.cmd("edit tests/fixtures/object_properties.ts")
+  vim.api.nvim_win_set_cursor(0, { 32, 2 }) -- On "registered" shorthand property
+
+  -- Forward should jump to next shorthand property
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(33, pos[1], "Should jump from registered to scenario")
+end)
+
+test("Object properties: shorthand property backward navigation", function()
+  vim.cmd("edit tests/fixtures/object_properties.ts")
+  vim.api.nvim_win_set_cursor(0, { 33, 2 }) -- On "scenario" shorthand property
+
+  -- Backward should jump to previous shorthand property
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(32, pos[1], "Should jump from scenario back to registered")
+end)
+
+test("Object properties: mixed shorthand and normal properties forward", function()
+  vim.cmd("edit tests/fixtures/object_properties.ts")
+  vim.api.nvim_win_set_cursor(0, { 33, 2 }) -- On "scenario" shorthand property
+
+  -- Forward should jump to normal property
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(34, pos[1], "Should jump from shorthand to normal property")
+end)
+
+test("Object properties: mixed normal and shorthand properties backward", function()
+  vim.cmd("edit tests/fixtures/object_properties.ts")
+  vim.api.nvim_win_set_cursor(0, { 34, 2 }) -- On "normalProp" (regular pair property)
+
+  -- Backward should jump to shorthand property
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(33, pos[1], "Should jump from normal property back to shorthand")
+end)
+
 test("Arrays: forward navigation", function()
   vim.cmd("edit tests/fixtures/arrays.ts")
   vim.api.nvim_win_set_cursor(0, { 4, 17 }) -- On first number (1)

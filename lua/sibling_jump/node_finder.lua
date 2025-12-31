@@ -189,16 +189,16 @@ function M.get_node_at_cursor(bufnr)
         local grandparent = parent:parent()
         -- Check if this pair is inside an object (not a top-level pair)
         if grandparent and grandparent:type() == "object" then
-          -- Count how many pair siblings exist
-          local pair_count = 0
+          -- Count all property siblings (both pair and shorthand_property_identifier)
+          local prop_count = 0
           for child in grandparent:iter_children() do
-            if child:type() == "pair" then
-              pair_count = pair_count + 1
+            if child:type() == "pair" or child:type() == "shorthand_property_identifier" then
+              prop_count = prop_count + 1
             end
           end
-          -- If there are multiple pairs, navigate between them
-          -- If only one pair, it would jump outside the context (no-op)
-          if pair_count > 1 then
+          -- If there are multiple properties, navigate between them
+          -- If only one property, it would jump outside the context (no-op)
+          if prop_count > 1 then
             return parent, grandparent -- Return the pair and the object
           else
             return nil, "Single property in object - would exit context"
@@ -222,6 +222,28 @@ function M.get_node_at_cursor(bufnr)
           else
             return nil, "Single property in object_type - would exit context"
           end
+        end
+      end
+    end
+
+    -- Special case: if we're on a shorthand_property_identifier inside an object,
+    -- navigate between all properties (shorthand and regular pairs) in the object.
+    -- Example: { registered, scenario, normalProp: value } - navigate between all properties
+    if current:type() == "shorthand_property_identifier" then
+      local parent = current:parent()
+      if parent and parent:type() == "object" then
+        -- Count all meaningful property nodes (shorthand_property_identifier and pair)
+        local prop_count = 0
+        for child in parent:iter_children() do
+          if child:type() == "shorthand_property_identifier" or child:type() == "pair" then
+            prop_count = prop_count + 1
+          end
+        end
+        -- If there are multiple properties, navigate between them
+        if prop_count > 1 then
+          return current, parent -- Return the shorthand_property_identifier and the object
+        else
+          return nil, "Single property in object - would exit context"
         end
       end
     end

@@ -15,16 +15,16 @@ Sibling-jump.nvim uses a **modular architecture** with focused modules handling 
 
 ```
 lua/sibling_jump/
-├── init.lua                  (397 lines) - Public API & orchestration
-├── config.lua                (153 lines) - Static configuration
-├── utils.lua                 (144 lines) - Pure utility functions
-├── node_finder.lua           (420 lines) - AST node detection
-├── navigation.lua            (62 lines)  - Sibling finding logic
-├── positioning.lua           (36 lines)  - Cursor positioning
+├── init.lua                  - Public API & orchestration
+├── config.lua                - Static configuration
+├── utils.lua                 - Pure utility functions
+├── node_finder.lua           - AST node detection (largest module)
+├── navigation.lua            - Sibling finding logic
+├── positioning.lua           - Cursor positioning
 └── special_modes/
-    ├── method_chains.lua     (118 lines) - Method chain navigation
-    ├── if_else_chains.lua    (276 lines) - If-else navigation
-    └── switch_cases.lua      (230 lines) - Switch case navigation
+    ├── method_chains.lua     - Method chain navigation
+    ├── if_else_chains.lua    - If-else navigation
+    └── switch_cases.lua      - Switch case navigation
 ```
 
 ---
@@ -148,7 +148,7 @@ return {
 ```
 
 **Design Notes**:
-- This is the most complex module (420 lines)
+- This is the most complex module (largest codebase)
 - Heavy use of treesitter API
 - Context-aware (respects nesting levels)
 - Prevents "context escape" (jumping out of single-element lists)
@@ -252,7 +252,7 @@ return M
 - Handles both JavaScript (`else_clause` nested) and Lua (`elseif_statement` direct children)
 
 **Design Notes**:
-- Most complex special mode (276 lines)
+- Most complex special mode
 - Recursive collection of else clauses for JS/TS
 - Requires `get_sibling_node` dependency (passed in to avoid circular dependency)
 

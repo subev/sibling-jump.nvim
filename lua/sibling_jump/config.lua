@@ -63,6 +63,7 @@ M.MEANINGFUL_TYPES = {
   "property_signature", -- For type definitions like `contentUrl: string;`
   "public_field_definition",
   "pair", -- For object properties like `key: value`
+  "shorthand_property_identifier", -- For object shorthand properties like `{ foo, bar }`
   "type_alias_declaration", -- For type aliases like `type Foo = Bar`
   "interface_declaration", -- For interfaces like `interface Foo { ... }`
 
@@ -89,13 +90,11 @@ M.MEANINGFUL_TYPES = {
   -- === Lua ===
   "assignment_statement",
   "function_call",
-  "function_declaration", -- Function declarations
-  "function_definition", -- Anonymous functions
   "repeat_statement", -- repeat-until loops
-  "do_statement", -- do-end blocks
   "label_statement", -- Labels like ::continue::
   "elseif_statement", -- elseif branches
   "else_statement", -- else branches
+  -- Note: do_statement, function_declaration, function_definition are shared with other languages above
 
   -- === Java ===
   "local_variable_declaration", -- Local variables in methods
