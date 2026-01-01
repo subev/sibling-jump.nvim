@@ -409,5 +409,237 @@ test("Block-loop: End of chain jumps to property name", function()
   assert_eq(212, pos[1], "Should cycle back to end of chain (line 212)")
 end)
 
+test("Block-loop: Member call from object (analytics.capture)", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/call_expressions.ts")
+  vim.api.nvim_win_set_cursor(0, {4, 0})  -- On 'analytics' (line 4)
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(10, pos[1], "Should jump from 'analytics' to closing ) (line 10)")
+  assert_eq(1, pos[2], "Should be at closing paren")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(4, pos[1], "Should cycle back to method name line (line 4)")
+  assert_eq(10, pos[2], "Should cycle back to 'capture' method name (col 10)")
+end)
+
+test("Block-loop: Member call from method (analytics.capture)", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/call_expressions.ts")
+  vim.api.nvim_win_set_cursor(0, {4, 10})  -- On 'capture' (line 4)
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(10, pos[1], "Should jump from 'capture' to closing ) (line 10)")
+  assert_eq(1, pos[2], "Should be at closing paren")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(4, pos[1], "Should cycle back to 'capture' (line 4)")
+  assert_eq(10, pos[2], "Should be at 'capture' method name (col 10)")
+end)
+
+test("Block-loop: Simple member call foo.bar()", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/call_expressions.ts")
+  vim.api.nvim_win_set_cursor(0, {13, 0})  -- On 'foo' (line 13)
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(13, pos[1], "Should jump to closing ) on same line")
+  assert_eq(8, pos[2], "Should be at closing paren (col 8)")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(13, pos[1], "Should cycle back to same line")
+  assert_eq(4, pos[2], "Should cycle back to 'bar' method name (col 4)")
+end)
+
+test("Block-loop: Await simple call", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/call_expressions.ts")
+  vim.api.nvim_win_set_cursor(0, {19, 0})  -- On 'await' (line 19)
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(19, pos[1], "Should jump to closing ) on same line")
+  assert_eq(10, pos[2], "Should be at closing paren")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(19, pos[1], "Should cycle back to 'await' keyword")
+  assert_eq(0, pos[2], "Should be at 'await' keyword (col 0)")
+end)
+
+test("Block-loop: Await member call from await", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/call_expressions.ts")
+  vim.api.nvim_win_set_cursor(0, {20, 0})  -- On 'await' (line 20)
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(20, pos[1], "Should jump to closing ) on same line")
+  assert_eq(14, pos[2], "Should be at closing paren")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(20, pos[1], "Should cycle back to 'await' keyword")
+  assert_eq(0, pos[2], "Should be at 'await' keyword (col 0)")
+end)
+
+test("Block-loop: Await member call from object", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/call_expressions.ts")
+  vim.api.nvim_win_set_cursor(0, {20, 6})  -- On 'bar' in 'await bar.baz()' (line 20)
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(20, pos[1], "Should jump to closing ) on same line")
+  assert_eq(14, pos[2], "Should be at closing paren")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(20, pos[1], "Should cycle back to 'await' keyword")
+  assert_eq(0, pos[2], "Should cycle back to 'await' keyword, not 'bar'")
+end)
+
+test("Block-loop: Await member call from method", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/call_expressions.ts")
+  vim.api.nvim_win_set_cursor(0, {20, 10})  -- On 'baz' in 'await bar.baz()' (line 20)
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(20, pos[1], "Should jump to closing ) on same line")
+  assert_eq(14, pos[2], "Should be at closing paren")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(20, pos[1], "Should cycle back to 'await' keyword")
+  assert_eq(0, pos[2], "Should cycle back to 'await' keyword (not method name)")
+end)
+
+test("Block-loop: Nested member call from first object", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/nested_member_calls.ts")
+  vim.api.nvim_win_set_cursor(0, {2, 0})  -- On 'analytics' (line 2)
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(8, pos[1], "Should jump to closing ) (line 8)")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(2, pos[1], "Should cycle back to line 2")
+  assert_eq(14, pos[2], "Should cycle back to 'capture' (final method name)")
+end)
+
+test("Block-loop: Nested member call from middle property", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/nested_member_calls.ts")
+  vim.api.nvim_win_set_cursor(0, {2, 10})  -- On 'foo' (line 2)
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(8, pos[1], "Should jump to closing ) (line 8)")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(2, pos[1], "Should cycle back to line 2")
+  assert_eq(14, pos[2], "Should cycle back to 'capture'")
+end)
+
+test("Block-loop: Nested member call from final method", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/nested_member_calls.ts")
+  vim.api.nvim_win_set_cursor(0, {2, 14})  -- On 'capture' (line 2)
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(8, pos[1], "Should jump to closing ) (line 8)")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(2, pos[1], "Should cycle back to line 2")
+  assert_eq(14, pos[2], "Should cycle back to 'capture'")
+end)
+
+test("Block-loop: Deep nested member call", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/nested_member_calls.ts")
+  vim.api.nvim_win_set_cursor(0, {11, 0})  -- On 'obj' in obj.a.b.c.method()
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(11, pos[1], "Should jump to closing ) on same line")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(11, pos[1], "Should cycle back to same line")
+end)
+
+test("Block-loop: Await with nested member call", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/nested_member_calls.ts")
+  vim.api.nvim_win_set_cursor(0, {14, 0})  -- On 'await' in await analytics.track.event()
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(14, pos[1], "Should jump to closing ) on same line")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(14, pos[1], "Should cycle back to 'await'")
+  assert_eq(0, pos[2], "Should be at 'await' keyword")
+end)
+
+test("Block-loop: Property value from beginning of value chain", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/block_loop.ts")
+  vim.api.nvim_win_set_cursor(0, {193, 18})  -- On 'procedure' (beginning of value chain)
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(197, pos[1], "Should jump to end of entire chain (mutation closing)")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(193, pos[1], "Should cycle back to property name")
+  assert_eq(2, pos[2], "Should be at 'consumeToken'")
+end)
+
+test("Block-loop: Property value from middle of chain", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/block_loop.ts")
+  vim.api.nvim_win_set_cursor(0, {194, 5})  -- On '.input' (middle of chain)
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(194, pos[1], "Should jump to closing ) of .input()")
+  assert_eq(42, pos[2], "Should be at closing paren of .input()")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(194, pos[1], "Should cycle back to .input")
+  assert_eq(5, pos[2], "Should be at 'i' in .input")
+end)
+
+test("Block-loop: Property value cycle back from end", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/block_loop.ts")
+  vim.api.nvim_win_set_cursor(0, {197, 5})  -- At closing ) of .mutation()
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(193, pos[1], "Should jump back to property name")
+  assert_eq(2, pos[2], "Should be at 'consumeToken'")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(197, pos[1], "Should jump back to end of chain")
+end)
+
 -- Run all tests
 run_tests()

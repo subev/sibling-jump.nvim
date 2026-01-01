@@ -72,6 +72,30 @@ function M.detect(node)
     return false, nil, 0
   end
 
+  -- CRITICAL: Only trigger if-else chain navigation if we're ON an if/else/elseif keyword/structure.
+  -- If we're on a statement INSIDE an if/else block (not the structure itself), skip detection.
+  local utils = require("sibling_jump.utils")
+  
+  -- Walk up to find the first meaningful node (statement level)
+  local meaningful_node = node
+  while meaningful_node and not utils.is_meaningful_node(meaningful_node) do
+    meaningful_node = meaningful_node:parent()
+  end
+  
+  -- If we found a meaningful node, check if it's an if/else structure
+  if meaningful_node then
+    local meaningful_is_if_else = meaningful_node:type() == "if_statement"
+      or meaningful_node:type() == "elseif_statement"
+      or meaningful_node:type() == "else_statement"
+      or meaningful_node:type() == "else_clause"
+    
+    -- If the meaningful node is NOT an if/else structure, skip detection
+    -- This prevents triggering when cursor is on regular statements INSIDE an if/else block
+    if not meaningful_is_if_else then
+      return false, nil, 0
+    end
+  end
+
   -- Walk up to find if_statement or else_clause
   -- We want to find the OUTERMOST if_statement that contains the cursor AND has else clauses
   -- However, if we find an inner if_statement with else clauses, prefer that over continuing up
@@ -197,6 +221,15 @@ function M.detect(node)
     
     -- Cursor is on the main if part (before any else)
     return true, found_if, 0
+  end
+
+  -- Check if cursor is on the closing 'end' keyword of the if_statement
+  -- In Lua, 'end' is after all else clauses but still part of the if structure
+  local _, _, if_end_row = found_if:range()
+  if cursor_row == if_end_row then
+    -- Treat as being AFTER the last else clause (virtual position beyond all clauses)
+    -- This way, backward navigation will go TO the last else clause
+    return true, found_if, #else_clauses + 1
   end
 
   return false, nil, 0

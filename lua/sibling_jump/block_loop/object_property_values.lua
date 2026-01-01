@@ -4,75 +4,138 @@
 
 local M = {}
 
--- Detect if cursor is on an object property name whose value is a call expression
+-- Detect if cursor is on or inside an object property whose value is a call expression
 -- Returns: detected (bool), context (table or nil)
 function M.detect(node, cursor_pos)
   if not node then
     return false, nil
   end
   
-  -- Check if we're on a property_identifier that's DIRECTLY a child of a pair
-  -- (not a property_identifier inside a member_expression in a method chain)
-  if node:type() == "property_identifier" then
-    local parent = node:parent()
-    
-    -- IMPORTANT: Only match if immediate parent is 'pair'
-    -- This ensures we're on the property NAME (e.g., "consumeToken: ...")
-    -- NOT on a method name in a chain (e.g., ".input" in a chain)
-    if parent and parent:type() == "pair" then
-      -- Verify this property_identifier is the KEY of the pair (child 0)
-      local key = parent:child(0)
-      if key and key:id() == node:id() then
-        -- Get the value (child at index 2: key, :, value)
-        local value = parent:child(2)
-        
-        if value and value:type() == "call_expression" then
-          -- Check if cursor is on property name line
-          local prop_row = node:start()
-          if prop_row == cursor_pos[1] - 1 then
-            local context = M.build_context(node, value)
-            return true, context
-          end
-          
-          -- Check if cursor is on value end line (for cycling back)
-          local _, _, end_row, end_col = value:range()
-          if end_row == cursor_pos[1] - 1 then
-            local context = M.build_context(node, value)
-            return true, context
-          end
-        end
-      end
-    end
-  end
+  -- Strategy: Walk up from any node to find a parent 'pair' node
+  -- Then check if cursor is within that pair's range
+  -- This allows detection from anywhere in the property (key or value)
   
-  -- Case 2: Cursor on closing of value - find the property name
-  -- Walk up to find pair, then get property name
-  -- IMPORTANT: Only match if cursor is near the END of the value, not in the middle
-  local current = node
-  while current do
-    if current:type() == "pair" then
-      local prop_name = current:child(0)
-      local value = current:child(2)
-      
-      if prop_name and value and value:type() == "call_expression" then
-        local _, _, end_row, end_col = value:range()
-        -- Check if cursor is on the ending line AND near the ending column
-        -- Use strict column match (within 2 columns) to avoid matching nested calls
-        if end_row == cursor_pos[1] - 1 then
-          local cursor_col = cursor_pos[2]
-          local col_diff = math.abs(cursor_col - (end_col - 1))
-          if col_diff <= 2 then
-            local context = M.build_context(prop_name, value)
-            return true, context
-          end
-        end
-      end
+  local pair_node = node
+  local depth = 0
+  
+  -- Walk up to find the nearest pair
+  while pair_node and depth < 20 do
+    if pair_node:type() == "pair" then
       break
     end
-    current = current:parent()
-    if not current then break end
+    
+    -- Stop at object boundaries to handle nested properties correctly
+    -- If we hit an object that's itself a value of another pair, stop there
+    if pair_node:type() == "object" then
+      local obj_parent = pair_node:parent()
+      if obj_parent and obj_parent:type() == "pair" then
+        local parent_value = obj_parent:field("value")[1]
+        if parent_value and parent_value:id() == pair_node:id() then
+          -- This object is a property value, we're in a nested context
+          -- Don't go beyond this - use the inner property context
+          pair_node = nil
+          break
+        end
+      end
+    end
+    
+    pair_node = pair_node:parent()
+    depth = depth + 1
   end
   
+  -- Check if we found a valid pair
+  if not pair_node or pair_node:type() ~= "pair" then
+    return false, nil
+  end
+  
+  -- Get the key and value
+  local key = pair_node:child(0)  -- property name
+  local value = pair_node:child(2)  -- value expression
+  
+  if not key or not value then
+    return false, nil
+  end
+  
+  -- Only handle if value is a call_expression (has method chains)
+  if value:type() ~= "call_expression" then
+    return false, nil
+  end
+  
+  -- Now determine if cursor position should trigger property-level navigation
+  -- We want to match:
+  --   1. Cursor on the property key (name)
+  --   2. Cursor at the beginning of the value (first identifier)
+  --   3. Cursor at the end of the value (closing paren)
+  -- We DON'T want to match:
+  --   - Cursor in the middle of the chain (let call_expressions handle that)
+  
+  local cursor_row = cursor_pos[1] - 1  -- Convert to 0-indexed
+  local cursor_col = cursor_pos[2]
+  local key_row = key:start()
+  local value_start_row, value_start_col = value:start()
+  local _, _, value_end_row, value_end_col = value:range()
+  
+  -- Case 1: Cursor on the key line
+  if cursor_row == key_row then
+    return true, M.build_context(key, value)
+  end
+  
+  -- Case 2: Cursor at the end of the value (closing paren)
+  if cursor_row == value_end_row then
+    local col_diff = math.abs(cursor_col - (value_end_col - 1))
+    if col_diff <= 2 then
+      return true, M.build_context(key, value)
+    end
+  end
+  
+  -- Case 3: Cursor at the beginning of the value
+  -- Check if cursor is on the first identifier of the value
+  -- We need to find the leftmost identifier in the value
+  local function find_first_identifier(n)
+    if not n then return nil end
+    
+    if n:type() == "identifier" then
+      return n
+    end
+    
+    -- For member_expressions and call_expressions, check the leftmost part
+    if n:type() == "member_expression" then
+      local object = n:field("object")[1]
+      if object then
+        return find_first_identifier(object)
+      end
+    elseif n:type() == "call_expression" then
+      local func = n:field("function")[1]
+      if func then
+        return find_first_identifier(func)
+      end
+    end
+    
+    -- For other node types, check first child
+    local child = n:child(0)
+    if child then
+      return find_first_identifier(child)
+    end
+    
+    return nil
+  end
+  
+  local first_id = find_first_identifier(value)
+  if first_id then
+    local first_row, first_col = first_id:start()
+    local _, first_end_col = first_id:end_()
+    
+    -- Check if cursor is on the first identifier
+    if cursor_row == first_row then
+      -- Allow some tolerance in column (cursor can be anywhere on the identifier)
+      if cursor_col >= first_col and cursor_col <= first_end_col then
+        return true, M.build_context(key, value)
+      end
+    end
+  end
+  
+  -- Otherwise, cursor is in the middle of the chain
+  -- Let call_expressions or other handlers deal with it
   return false, nil
 end
 

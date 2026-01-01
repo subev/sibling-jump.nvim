@@ -192,9 +192,24 @@ function M.jump_to_sibling(opts)
 
       -- Special case: if target is an if_statement with else clauses and we're going backward,
       -- jump to the last else clause instead of the if
+      -- BUT: Only do this if current position is NOT inside the target if_statement
+      -- (to avoid skipping elseifs when navigating between siblings)
       if not forward and target_node:type() == "if_statement" then
-        -- Find the last else clause by walking through nested else-if chains
-        local find_last_else
+        -- Check if current node is inside target_node
+        local is_inside = false
+        local check_node = node
+        while check_node do
+          if check_node == target_node then
+            is_inside = true
+            break
+          end
+          check_node = check_node:parent()
+        end
+        
+        -- Only apply "jump to last else" if we're coming from outside the if_statement
+        if not is_inside then
+          -- Find the last else clause by walking through nested else-if chains
+          local find_last_else
         find_last_else = function(if_node)
           for i = 0, if_node:child_count() - 1 do
             local child = if_node:child(i)
@@ -224,10 +239,11 @@ function M.jump_to_sibling(opts)
           return nil
         end
 
-        local last_else = find_last_else(target_node)
-        if last_else then
-          target_node = last_else
-          target_row, target_col = last_else:start()
+          local last_else = find_last_else(target_node)
+          if last_else then
+            target_node = last_else
+            target_row, target_col = last_else:start()
+          end
         end
       end
 

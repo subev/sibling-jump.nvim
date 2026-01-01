@@ -1628,6 +1628,31 @@ test("Lua if-else-elseif: backward from statement after chain jumps to last else
   assert_eq(13, pos[1], "Should jump from return (L17) to else (L13), not to if")
 end)
 
+test("Lua if-else-elseif: backward from else continues to previous elseif", function()
+  vim.cmd("edit tests/fixtures/lua_if_else.lua")
+  vim.api.nvim_win_set_cursor(0, { 17, 2 }) -- On 'return x' at line 17
+
+  -- First jump to else
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(13, pos[1], "Should jump from return (L17) to else (L13)")
+  
+  -- Second jump should go to second elseif (L11), not to end (L15)
+  sibling_jump.jump_to_sibling({ forward = false })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(11, pos[1], "Should jump from else (L13) to second elseif (L11), not to end (L15)")
+  
+  -- Third jump should go to first elseif
+  sibling_jump.jump_to_sibling({ forward = false })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(9, pos[1], "Should jump from second elseif (L11) to first elseif (L9)")
+  
+  -- Fourth jump should go to if
+  sibling_jump.jump_to_sibling({ forward = false })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(7, pos[1], "Should jump from first elseif (L9) to if (L7)")
+end)
+
 test("Lua nested if-elseif: navigate inner chain not outer", function()
   vim.cmd("edit lua/sibling_jump/node_finder.lua")
   vim.api.nvim_win_set_cursor(0, { 188, 8 }) -- On nested 'if parent and parent:type() == "pair"'
