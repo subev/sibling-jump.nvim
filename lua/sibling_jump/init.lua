@@ -38,9 +38,26 @@ local enabled_buffers = {}
 -- Alias for backward compatibility
 local get_sibling_node = navigation.get_sibling_node
 
--- Collect all else clauses in an if-else-if chain
--- Returns: list of else_clause nodes (in order from first to last)
--- Note: This is for JavaScript/TypeScript only. Lua uses a different approach.
+-- Helper: Check if node is inside target_node
+local function is_inside_node(node, target_node)
+  local current = node
+  while current do
+    if current == target_node then
+      return true
+    end
+    current = current:parent()
+  end
+  return false
+end
+
+-- Helper: Perform cursor jump with optional centering
+local function perform_jump(row, col)
+  vim.cmd("normal! m'") -- Add to jump list
+  vim.api.nvim_win_set_cursor(0, { row + 1, col }) -- Convert 0-indexed to 1-indexed
+  if config.center_on_jump then
+    vim.cmd("normal! zz")
+  end
+end
 
 -- Main jump function
 function M.jump_to_sibling(opts)
@@ -81,12 +98,8 @@ function M.jump_to_sibling(opts)
         local target_prop = method_chains.navigate(property_node, forward)
         if target_prop then
           -- Successfully found target in chain
-          vim.cmd("normal! m'")
           local target_row, target_col = target_prop:start()
-          vim.api.nvim_win_set_cursor(0, { target_row + 1, target_col })
-          if config.center_on_jump then
-            vim.cmd("normal! zz")
-          end
+          perform_jump(target_row, target_col)
           goto continue
         else
           -- At boundary of chain, do nothing (no-op)
@@ -101,11 +114,7 @@ function M.jump_to_sibling(opts)
           if_else_chains.navigate(if_node, current_pos, forward, get_sibling_node)
         if target_node then
           -- Successfully found target in if-else chain
-          vim.cmd("normal! m'")
-          vim.api.nvim_win_set_cursor(0, { target_row + 1, target_col })
-          if config.center_on_jump then
-            vim.cmd("normal! zz")
-          end
+          perform_jump(target_row, target_col)
           goto continue
         end
         -- At boundary of chain, fall through to regular navigation
@@ -117,11 +126,7 @@ function M.jump_to_sibling(opts)
         local target_node, target_row, target_col = switch_cases.navigate(switch_node, current_case_pos, forward)
         if target_node then
           -- Successfully found target in switch case chain
-          vim.cmd("normal! m'")
-          vim.api.nvim_win_set_cursor(0, { target_row + 1, target_col })
-          if config.center_on_jump then
-            vim.cmd("normal! zz")
-          end
+          perform_jump(target_row, target_col)
           goto continue
         end
         -- At boundary of switch cases, fall through to regular navigation
@@ -146,17 +151,9 @@ function M.jump_to_sibling(opts)
       local target_node = forward and current_node.closest_after or current_node.closest_before
 
       if target_node then
-        -- Add current position to jump list before moving
-        vim.cmd("normal! m'")
-
         -- Get the appropriate cursor position (adjusted for JSX elements)
         local target_row, target_col = positioning.get_target_position(target_node)
-        vim.api.nvim_win_set_cursor(0, { target_row + 1, target_col }) -- Convert back to 1-indexed
-
-        -- Center the screen on the new position (if enabled)
-        if config.center_on_jump then
-          vim.cmd("normal! zz")
-        end
+        perform_jump(target_row, target_col)
       end
       -- Always return after handling whitespace (no sibling navigation)
       return
@@ -167,17 +164,9 @@ function M.jump_to_sibling(opts)
       local target_node = forward and current_node.closest_after or current_node.closest_before
 
       if target_node then
-        -- Add current position to jump list before moving
-        vim.cmd("normal! m'")
-
         -- Get the appropriate cursor position (adjusted for JSX elements)
         local target_row, target_col = positioning.get_target_position(target_node)
-        vim.api.nvim_win_set_cursor(0, { target_row + 1, target_col })
-
-        -- Center the screen on the new position (if enabled)
-        if config.center_on_jump then
-          vim.cmd("normal! zz")
-        end
+        perform_jump(target_row, target_col)
       end
       -- Always return after handling comment escape (no sibling navigation)
       return
@@ -190,76 +179,30 @@ function M.jump_to_sibling(opts)
     if target_node then
       local target_row, target_col
 
-      -- Special case: if target is an if_statement with else clauses and we're going backward,
-      -- jump to the last else clause instead of the if
-      -- BUT: Only do this if current position is NOT inside the target if_statement
-      -- (to avoid skipping elseifs when navigating between siblings)
-      if not forward and target_node:type() == "if_statement" then
-        -- Check if current node is inside target_node
-        local is_inside = false
-        local check_node = node
-        while check_node do
-          if check_node == target_node then
-            is_inside = true
-            break
+      -- Special case: when navigating backward to compound statements (if-else, switch),
+      -- land on the last clause/case instead of the beginning keyword.
+      -- Only do this if coming from OUTSIDE the target structure (not navigating within siblings).
+      if not forward then
+        if target_node:type() == "if_statement" and not is_inside_node(node, target_node) then
+          local entry_node, entry_row, entry_col = if_else_chains.get_entry_point(target_node, forward)
+          if entry_node ~= target_node then
+            target_node = entry_node
+            target_row, target_col = entry_row, entry_col
           end
-          check_node = check_node:parent()
-        end
-        
-        -- Only apply "jump to last else" if we're coming from outside the if_statement
-        if not is_inside then
-          -- Find the last else clause by walking through nested else-if chains
-          local find_last_else
-        find_last_else = function(if_node)
-          for i = 0, if_node:child_count() - 1 do
-            local child = if_node:child(i)
-            if child:type() == "else_clause" then
-              -- Found an else clause - check if it contains another if (else-if) or is final else
-              for j = 0, child:child_count() - 1 do
-                local grandchild = child:child(j)
-                if grandchild:type() == "if_statement" then
-                  -- This is else-if, recurse to find deeper else
-                  return find_last_else(grandchild)
-                end
-              end
-              -- No nested if found, this is the final else
-              return child
-            elseif child:type() == "elseif_statement" or child:type() == "else_statement" then
-              -- Lua style - return the last one found
-              local last = child
-              for k = i + 1, if_node:child_count() - 1 do
-                local next_child = if_node:child(k)
-                if next_child:type() == "elseif_statement" or next_child:type() == "else_statement" then
-                  last = next_child
-                end
-              end
-              return last
-            end
-          end
-          return nil
-        end
-
-          local last_else = find_last_else(target_node)
-          if last_else then
-            target_node = last_else
-            target_row, target_col = last_else:start()
+        elseif target_node:type() == "switch_statement" and not is_inside_node(node, target_node) then
+          local entry_node, entry_row, entry_col = switch_cases.get_entry_point(target_node, forward)
+          if entry_node ~= target_node then
+            target_node = entry_node
+            target_row, target_col = entry_row, entry_col
           end
         end
       end
-
-      -- Add current position to jump list before moving
-      vim.cmd("normal! m'")
 
       -- Get the appropriate cursor position (adjusted for JSX elements)
       if not target_row then
         target_row, target_col = positioning.get_target_position(target_node)
       end
-      vim.api.nvim_win_set_cursor(0, { target_row + 1, target_col }) -- Convert back to 1-indexed
-
-      -- Center the screen on the new position (if enabled)
-      if config.center_on_jump then
-        vim.cmd("normal! zz")
-      end
+      perform_jump(target_row, target_col)
     else
       -- No sibling found - just stop silently (no-op)
       return

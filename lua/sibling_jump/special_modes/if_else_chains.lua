@@ -325,4 +325,41 @@ function M.navigate(if_node, current_pos, forward, get_sibling_node)
   end
 end
 
+-- Get the entry point when navigating INTO an if_statement from outside
+-- This determines where the cursor should land when jumping TO an if-else structure
+-- Returns: target_node, target_row, target_col
+function M.get_entry_point(if_node, forward)
+  if forward then
+    -- Forward: land on the 'if' keyword
+    return if_node, if_node:start()
+  end
+  
+  -- Backward: land on the last else/elseif clause
+  local else_clauses = collect_else_clauses(if_node)
+  
+  -- For Lua: collect elseif_statement and else_statement directly
+  if #else_clauses == 0 then
+    for i = 0, if_node:child_count() - 1 do
+      local child = if_node:child(i)
+      if child:type() == "elseif_statement" or child:type() == "else_statement" then
+        table.insert(else_clauses, child)
+      end
+    end
+  end
+  
+  -- If we found else clauses, return the last one
+  if #else_clauses > 0 then
+    local last_clause = else_clauses[#else_clauses]
+    local target_row, target_col = get_else_keyword_position(last_clause)
+    -- For Lua nodes, get_else_keyword_position returns nil, so fall back to node start
+    if not target_row then
+      target_row, target_col = last_clause:start()
+    end
+    return last_clause, target_row, target_col
+  end
+  
+  -- No else clauses, return the if_node itself
+  return if_node, if_node:start()
+end
+
 return M

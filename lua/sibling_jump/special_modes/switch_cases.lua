@@ -227,4 +227,26 @@ function M.navigate(switch_node, current_pos, forward)
   end
 end
 
+-- Get the entry point when navigating INTO a switch_statement from outside
+-- This determines where the cursor should land when jumping TO a switch structure
+-- Returns: target_node, target_row, target_col
+function M.get_entry_point(switch_node, forward)
+  if forward then
+    -- Forward: land on the 'switch' keyword
+    return switch_node, switch_node:start()
+  end
+  
+  -- Backward: land on the last case/default
+  local cases = collect_switch_cases(switch_node)
+  
+  if #cases > 0 then
+    local last_case = cases[#cases]
+    local target_row, target_col = get_case_keyword_position(last_case)
+    return last_case, target_row, target_col
+  end
+  
+  -- No cases found, return the switch_node itself
+  return switch_node, switch_node:start()
+end
+
 return M

@@ -1371,6 +1371,18 @@ test("Switch cases: navigate from parent context lands on switch", function()
   assert_eq(18, pos[1], "Should jump from switch (L7) to statement after (L18)")
 end)
 
+test("Switch cases: backward from statement after switch jumps to last case", function()
+  vim.cmd("edit tests/fixtures/switch_cases.ts")
+  
+  -- Start at statement after switch (line 18)
+  vim.api.nvim_win_set_cursor(0, {18, 2})
+  
+  -- Jump backward should land on default case (line 14), not switch keyword (line 7)
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(14, pos[1], "Should jump from statement after (L18) to default case (L14), not switch keyword")
+end)
+
 test("Switch cases: empty cases (fallthrough)", function()
   vim.cmd("edit tests/fixtures/switch_cases.ts")
   
