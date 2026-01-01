@@ -14,6 +14,7 @@ local method_chains = require("sibling_jump.special_modes.method_chains")
 local if_else_chains = require("sibling_jump.special_modes.if_else_chains")
 local switch_cases = require("sibling_jump.special_modes.switch_cases")
 local positioning = require("sibling_jump.positioning")
+local handlers = require("sibling_jump.handlers")
 
 local M = {}
 
@@ -38,17 +39,38 @@ local enabled_buffers = {}
 -- Alias for backward compatibility
 local get_sibling_node = navigation.get_sibling_node
 
--- Helper: Check if node is inside target_node
-local function is_inside_node(node, target_node)
-  local current = node
-  while current do
-    if current == target_node then
-      return true
-    end
-    current = current:parent()
-  end
-  return false
-end
+-- Special navigation modes (in priority order)
+-- Each mode has: detect(node) -> detected, context_data...
+-- And: navigate(context_data..., forward) -> target_node, row, col | nil
+local special_modes = {
+  {
+    name = "method_chains",
+    detect = function(node)
+      local in_chain, property_node = method_chains.detect(node)
+      return in_chain, property_node
+    end,
+    navigate = function(property_node, forward)
+      local target = method_chains.navigate(property_node, forward)
+      if not target then return nil end
+      return target, target:start()
+    end,
+    boundary_behavior = "no_op",
+  },
+  {
+    name = "if_else_chains",
+    detect = if_else_chains.detect,
+    navigate = function(if_node, current_pos, forward)
+      return if_else_chains.navigate(if_node, current_pos, forward, get_sibling_node)
+    end,
+    boundary_behavior = "fallthrough",
+  },
+  {
+    name = "switch_cases",
+    detect = switch_cases.detect,
+    navigate = switch_cases.navigate,
+    boundary_behavior = "fallthrough",
+  },
+}
 
 -- Helper: Perform cursor jump with optional centering
 local function perform_jump(row, col)
@@ -62,151 +84,90 @@ end
 -- Main jump function
 function M.jump_to_sibling(opts)
   opts = opts or {}
-  local forward = opts.forward ~= false -- Default to forward
+  local forward = opts.forward ~= false
 
   local bufnr = vim.api.nvim_get_current_buf()
 
   -- Repeat for count
   for _ = 1, vim.v.count1 do
-    -- Get cursor position for chain detection
     local cursor = vim.api.nvim_win_get_cursor(0)
-    local row = cursor[1] - 1
-    local col = cursor[2]
+    local row, col = cursor[1] - 1, cursor[2]
 
-    -- Try special navigation modes (requires treesitter node)
-    -- Use explicit checks instead of deep nesting
-    local node
-    do
-      local lang = vim.treesitter.language.get_lang(vim.bo[bufnr].filetype)
-      if lang then
-        local ok, parser = pcall(vim.treesitter.get_parser, bufnr, lang)
-        if ok and parser then
-          local tree = parser:parse()[1]
-          if tree then
-            local root = tree:root()
-            node = root:descendant_for_range(row, col, row, col)
-          end
-        end
-      end
-    end
+    -- Get tree-sitter node at cursor (if available)
+    local node = handlers.get_node_at_cursor(bufnr, row, col)
 
-    -- Check special modes if we have a valid node
+    -- Try special navigation modes (if node available)
     if node then
-      -- FIRST: Check if we're in a method chain
-      local in_chain, property_node = method_chains.detect(node)
-      if in_chain then
-        local target_prop = method_chains.navigate(property_node, forward)
-        if target_prop then
-          -- Successfully found target in chain
-          local target_row, target_col = target_prop:start()
-          perform_jump(target_row, target_col)
-          goto continue
-        else
-          -- At boundary of chain, do nothing (no-op)
-          return
+      for _, mode in ipairs(special_modes) do
+        local detected, ctx1, ctx2 = mode.detect(node)
+        if detected then
+          local target_node, target_row, target_col
+          -- Call navigate with the right number of args based on context
+          if ctx2 ~= nil then
+            -- Two context values (e.g., if_node, current_pos)
+            target_node, target_row, target_col = mode.navigate(ctx1, ctx2, forward)
+          else
+            -- One context value (e.g., property_node)
+            target_node, target_row, target_col = mode.navigate(ctx1, forward)
+          end
+          
+          if target_node then
+            -- Special mode found a target
+            perform_jump(target_row, target_col)
+            goto continue
+          elseif mode.boundary_behavior == "no_op" then
+            -- At boundary, stop here
+            return
+          end
+          -- boundary_behavior == "fallthrough", continue to regular navigation
+          break
         end
-      end
-
-      -- SECOND: Check if we're in an if-else-if chain
-      local in_if_else, if_node, current_pos = if_else_chains.detect(node)
-      if in_if_else then
-        local target_node, target_row, target_col =
-          if_else_chains.navigate(if_node, current_pos, forward, get_sibling_node)
-        if target_node then
-          -- Successfully found target in if-else chain
-          perform_jump(target_row, target_col)
-          goto continue
-        end
-        -- At boundary of chain, fall through to regular navigation
-      end
-
-      -- THIRD: Check if we're in a switch case chain
-      local in_switch, switch_node, current_case_pos = switch_cases.detect(node)
-      if in_switch then
-        local target_node, target_row, target_col = switch_cases.navigate(switch_node, current_case_pos, forward)
-        if target_node then
-          -- Successfully found target in switch case chain
-          perform_jump(target_row, target_col)
-          goto continue
-        end
-        -- At boundary of switch cases, fall through to regular navigation
       end
     end
 
-    -- FALLBACK: Use regular sibling/whitespace navigation
+    -- Regular navigation: handle special cases first
     local current_node, parent = node_finder.get_node_at_cursor(bufnr)
-
-    if not current_node then
-      -- Silently do nothing if no node found
-      return
+    
+    if not current_node or not parent then
+      return -- No node or at root level
     end
 
-    if not parent then
-      -- At root level, can't have siblings
-      return
-    end
-
-    -- Special case: if we're on whitespace, jump to the closest statement
-    if type(current_node) == "table" and current_node._on_whitespace then
-      local target_node = forward and current_node.closest_after or current_node.closest_before
-
-      if target_node then
-        -- Get the appropriate cursor position (adjusted for JSX elements)
-        local target_row, target_col = positioning.get_target_position(target_node)
-        perform_jump(target_row, target_col)
+    -- Handle whitespace
+    local whitespace_result = handlers.handle_whitespace(current_node, forward, positioning)
+    if whitespace_result then
+      if whitespace_result == "no_op" then
+        return
       end
-      -- Always return after handling whitespace (no sibling navigation)
+      perform_jump(whitespace_result.row, whitespace_result.col)
       return
     end
 
-    -- Special case: if we're on a comment or empty line, jump to nearest meaningful node
-    if type(current_node) == "table" and current_node._on_comment then
-      local target_node = forward and current_node.closest_after or current_node.closest_before
-
-      if target_node then
-        -- Get the appropriate cursor position (adjusted for JSX elements)
-        local target_row, target_col = positioning.get_target_position(target_node)
-        perform_jump(target_row, target_col)
+    -- Handle comments
+    local comment_result = handlers.handle_comment(current_node, forward, positioning)
+    if comment_result then
+      if comment_result == "no_op" then
+        return
       end
-      -- Always return after handling comment escape (no sibling navigation)
+      perform_jump(comment_result.row, comment_result.col)
       return
     end
 
     -- Find sibling node
     local target_node = get_sibling_node(current_node, parent, forward)
-
-    -- Jump to target or do nothing (no notification)
-    if target_node then
-      local target_row, target_col
-
-      -- Special case: when navigating backward to compound statements (if-else, switch),
-      -- land on the last clause/case instead of the beginning keyword.
-      -- Only do this if coming from OUTSIDE the target structure (not navigating within siblings).
-      if not forward then
-        if target_node:type() == "if_statement" and not is_inside_node(node, target_node) then
-          local entry_node, entry_row, entry_col = if_else_chains.get_entry_point(target_node, forward)
-          if entry_node ~= target_node then
-            target_node = entry_node
-            target_row, target_col = entry_row, entry_col
-          end
-        elseif target_node:type() == "switch_statement" and not is_inside_node(node, target_node) then
-          local entry_node, entry_row, entry_col = switch_cases.get_entry_point(target_node, forward)
-          if entry_node ~= target_node then
-            target_node = entry_node
-            target_row, target_col = entry_row, entry_col
-          end
-        end
-      end
-
-      -- Get the appropriate cursor position (adjusted for JSX elements)
-      if not target_row then
-        target_row, target_col = positioning.get_target_position(target_node)
-      end
-      perform_jump(target_row, target_col)
-    else
-      -- No sibling found - just stop silently (no-op)
-      return
+    if not target_node then
+      return -- No sibling found
     end
+
+    -- Adjust entry point for compound statements
+    local adjusted_node, adjusted_row, adjusted_col = 
+      handlers.adjust_entry_point(target_node, forward, node, if_else_chains, switch_cases)
+    
+    local target_row, target_col = adjusted_row, adjusted_col
+    if not target_row then
+      target_row, target_col = positioning.get_target_position(adjusted_node or target_node)
+    end
+    
+    perform_jump(target_row, target_col)
 
     ::continue::
   end
