@@ -17,6 +17,9 @@ local positioning = require("sibling_jump.positioning")
 
 local M = {}
 
+-- Lazy-loaded block_loop module
+local block_loop = nil
+
 -- Plugin configuration
 local config = {
   center_on_jump = false, -- Whether to center screen (zz) after each jump
@@ -26,6 +29,7 @@ local config = {
 local stored_config = {
   next_key = "<C-j>",
   prev_key = "<C-k>",
+  block_loop_key = nil,
 }
 
 -- Track which buffers have sibling-jump enabled
@@ -339,9 +343,34 @@ function M.setup(opts)
   -- Store configuration for manual buffer enable/disable
   stored_config.next_key = opts.next_key or "<C-j>"
   stored_config.prev_key = opts.prev_key or "<C-k>"
+  stored_config.block_loop_key = opts.block_loop_key or nil
 
   -- Update configuration
   config.center_on_jump = opts.center_on_jump ~= nil and opts.center_on_jump or false
+  
+  -- Setup block-loop feature if key is configured
+  if opts.block_loop_key then
+    -- Lazy load block_loop module
+    block_loop = require("sibling_jump.block_loop")
+    
+    -- Block-loop can have separate center_on_jump setting
+    local block_loop_center = opts.block_loop_center_on_jump
+    if block_loop_center == nil then
+      -- Default: use main center_on_jump setting
+      block_loop_center = config.center_on_jump
+    end
+    block_loop.set_config({ center_on_jump = block_loop_center })
+    
+    -- Normal mode keymap
+    vim.keymap.set("n", opts.block_loop_key, function()
+      block_loop.jump_to_boundary({ mode = "normal" })
+    end, { noremap = true, silent = true, desc = "Jump to block boundary" })
+    
+    -- Visual mode keymap
+    vim.keymap.set("v", opts.block_loop_key, function()
+      block_loop.jump_to_boundary({ mode = "visual" })
+    end, { noremap = true, silent = true, desc = "Jump to block boundary (visual)" })
+  end
 
   local filetypes = opts.filetypes or nil -- Optional filetype restriction
 
@@ -387,6 +416,14 @@ function M.setup(opts)
   vim.api.nvim_create_user_command("SiblingJumpBufferStatus", function()
     M.status_for_buffer()
   end, { desc = "Check sibling-jump status for current buffer" })
+end
+
+-- Expose block_loop for manual access (lazy-loaded)
+function M.block_loop()
+  if not block_loop then
+    block_loop = require("sibling_jump.block_loop")
+  end
+  return block_loop
 end
 
 return M

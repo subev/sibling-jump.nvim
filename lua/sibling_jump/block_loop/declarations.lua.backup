@@ -1,0 +1,220 @@
+-- Object and array literal with declaration (const/let/var) detection and navigation
+-- Also handles function calls: const foo = someFunc(...)
+
+local utils = require("sibling_jump.block_loop.utils")
+
+local M = {}
+
+-- Detect if cursor is on an object/array literal or function call with declaration
+-- Returns: detected (bool), context (table or nil)
+function M.detect(node, cursor_pos)
+  if not node then
+    return false, nil
+  end
+  
+  -- Look for lexical_declaration or variable_declaration
+  local decl = utils.find_ancestor(node, {"lexical_declaration", "variable_declaration"})
+  
+  if not decl then
+    return false, nil
+  end
+  
+  -- Try to find function call first (higher priority for router({...}) patterns)
+  local call_expr = M.find_call_expression_in_declaration(decl)
+  
+  if call_expr then
+    local context = M.build_context(decl, call_expr)
+    
+    -- Check if cursor is on any boundary position
+    for _, pos in ipairs(context.positions) do
+      if pos.row == cursor_pos[1] then
+        return true, context
+      end
+    end
+  end
+  
+  -- Fall back to simple object/array literal
+  local obj_or_array = M.find_object_or_array_in_declaration(decl)
+  
+  if obj_or_array then
+    local context = M.build_context(decl, obj_or_array)
+    
+    -- Check if cursor is on any boundary position
+    for _, pos in ipairs(context.positions) do
+      if pos.row == cursor_pos[1] then
+        return true, context
+      end
+    end
+  end
+  
+  return false, nil
+end
+
+-- Build context with positions
+function M.build_context(decl_node, target_node)
+  local positions = {}
+  
+  -- Position 0: Declaration keyword (const/let/var)
+  local start_row, start_col = decl_node:start()
+  table.insert(positions, {
+    row = start_row + 1,
+    col = start_col,
+    type = "declaration_keyword",
+  })
+  
+  -- Position 1: Closing bracket/brace/paren of object/array/call_expression
+  local _, _, end_row, end_col = target_node:range()
+  table.insert(positions, {
+    row = end_row + 1,
+    col = end_col,
+    type = "closing_bracket",
+  })
+  
+  return {
+    positions = positions,
+    node = decl_node,
+  }
+end
+
+-- Navigate to next position in cycle
+function M.navigate(context, cursor_pos, mode)
+  local positions = context.positions
+  local current_row = cursor_pos[1]
+  
+  -- Find current position index
+  local current_index = 1
+  for i, pos in ipairs(positions) do
+    if pos.row == current_row then
+      current_index = i
+      break
+    end
+  end
+  
+  -- Cycle to next (wrapping)
+  local next_index = (current_index % #positions) + 1
+  return positions[next_index]
+end
+
+-- Helper to find object or array in declaration (recursively)
+-- Finds simple object/array literals like: const obj = { ... }
+-- NOT function calls like: const obj = func({ ... })
+function M.find_object_or_array_in_declaration(decl_node)
+  local decl_start_row, _, decl_end_row, decl_end_col = decl_node:range()
+  
+  local best_obj = nil
+  local best_start_row = 9999999
+  local best_end_row = -1
+  
+  local function search(node, parent)
+    local node_type = node:type()
+    
+    if node_type == "object" or node_type == "array" then
+      local start_row, _, end_row, end_col = node:range()
+      
+      -- Only consider objects/arrays that are NOT inside a call_expression
+      -- i.e., the parent chain should not have call_expression
+      local in_call = false
+      local check_node = parent
+      local depth = 0
+      while check_node and depth < 5 do
+        if check_node:type() == "call_expression" then
+          in_call = true
+          break
+        end
+        check_node = check_node:parent()
+        depth = depth + 1
+      end
+      
+      if not in_call then
+        -- Prefer objects/arrays that start earlier and end closer to declaration end
+        local is_better = false
+        
+        if start_row < best_start_row then
+          is_better = true
+        elseif start_row == best_start_row and end_row > best_end_row then
+          is_better = true
+        end
+        
+        if is_better then
+          best_obj = node
+          best_start_row = start_row
+          best_end_row = end_row
+        end
+      end
+    end
+    
+    -- Continue searching all children
+    for i = 0, node:child_count() - 1 do
+      search(node:child(i), node)
+    end
+  end
+  
+  search(decl_node, nil)
+  
+  -- Verify the object ends close to the declaration
+  if best_obj then
+    local row_diff = math.abs(best_end_row - decl_end_row)
+    
+    if row_diff <= 1 then
+      return best_obj
+    end
+  end
+  
+  return nil
+end
+
+-- Helper to find call_expression in declaration
+-- Finds patterns like: const obj = someFunc(...) or const obj = router({...})
+-- Looks for the OUTERMOST call expression (starts earliest, ends latest)
+function M.find_call_expression_in_declaration(decl_node)
+  local decl_start_row, _, decl_end_row, _ = decl_node:range()
+  
+  local best_call = nil
+  local best_start_row = 9999999
+  local best_end_row = -1
+  
+  local function search(node)
+    local node_type = node:type()
+    
+    if node_type == "call_expression" then
+      local start_row, _, end_row, _ = node:range()
+      
+      -- Prefer call expressions that:
+      -- 1. Start earliest (more outer)
+      -- 2. End latest (more outer)
+      local is_better = false
+      
+      if start_row < best_start_row then
+        is_better = true
+      elseif start_row == best_start_row and end_row > best_end_row then
+        is_better = true
+      end
+      
+      if is_better then
+        best_call = node
+        best_start_row = start_row
+        best_end_row = end_row
+      end
+    end
+    
+    -- Continue searching children
+    for i = 0, node:child_count() - 1 do
+      search(node:child(i))
+    end
+  end
+  
+  search(decl_node)
+  
+  -- Verify the call expression ends close to the declaration
+  if best_call then
+    local row_diff = math.abs(best_end_row - decl_end_row)
+    
+    if row_diff <= 1 then
+      return best_call
+    end
+  end
+  
+  return nil
+end
+
+return M
