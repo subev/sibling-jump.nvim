@@ -2,6 +2,7 @@
 --
 -- Cycles through block boundaries for:
 -- - If/else/elseif chains
+-- - For/while loops
 -- - Object property values (property: methodChain())
 -- - Call expressions (method/function calls)
 -- - Declarations (const/let/var/function/type) with their value blocks
@@ -9,6 +10,7 @@
 
 local object_property_values = require("sibling_jump.block_loop.object_property_values")
 local call_expressions = require("sibling_jump.block_loop.call_expressions")
+local loops = require("sibling_jump.block_loop.loops")
 local if_blocks = require("sibling_jump.block_loop.if_blocks")
 local declarations = require("sibling_jump.block_loop.declarations")
 local switch_cases = require("sibling_jump.block_loop.switch_cases")
@@ -40,12 +42,13 @@ function M.jump_to_boundary(opts)
   end
   
   -- Try handlers in priority order
-  -- Priority: object_property_values > call_expressions > switch_cases > if_blocks > declarations
+  -- Priority: object_property_values > call_expressions > switch_cases > loops > if_blocks > declarations
   -- This ensures more specific structures are detected before broader ones
   local handlers = {
     object_property_values,
     call_expressions,
     switch_cases,
+    loops,
     if_blocks,
     declarations,
   }

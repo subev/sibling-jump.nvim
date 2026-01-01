@@ -29,7 +29,7 @@ function M.detect(node, cursor_pos)
     return false, nil
   end
   
-  -- Check if we're on an else clause line
+  -- Check if we're on an else clause line (TypeScript/JavaScript)
   local else_clause = utils.find_ancestor(node, {"else_clause"})
   if else_clause then
     -- Check cursor is on 'else' keyword line
@@ -39,6 +39,22 @@ function M.detect(node, cursor_pos)
     
     -- Walk up to parent if_statement
     local parent = else_clause:parent()
+    if parent and parent:type() == "if_statement" then
+      local outermost = M.find_outermost_if(parent)
+      return true, M.build_context(outermost)
+    end
+  end
+  
+  -- Check if we're on an elseif or else statement line (Lua)
+  local lua_else = utils.find_ancestor(node, {"elseif_statement", "else_statement"})
+  if lua_else then
+    -- Check cursor is on the keyword line
+    if not utils.is_cursor_on_node_line(cursor_pos[1], lua_else) then
+      return false, nil
+    end
+    
+    -- Walk up to parent if_statement
+    local parent = lua_else:parent()
     if parent and parent:type() == "if_statement" then
       local outermost = M.find_outermost_if(parent)
       return true, M.build_context(outermost)
@@ -109,12 +125,14 @@ function M.build_context(if_node)
 end
 
 -- Collect all else clauses (else if, else) recursively
+-- Handles both TypeScript/JavaScript (else_clause) and Lua (elseif_statement, else_statement)
 function M.collect_else_clauses(if_node)
   local positions = {}
   
   for i = 0, if_node:child_count() - 1 do
     local child = if_node:child(i)
     
+    -- TypeScript/JavaScript: else_clause (nested structure)
     if child:type() == "else_clause" then
       local else_row, else_col = child:start()
       
@@ -147,6 +165,22 @@ function M.collect_else_clauses(if_node)
           end
         end
       end
+    -- Lua: elseif_statement (flat structure, direct child)
+    elseif child:type() == "elseif_statement" then
+      local elseif_row, elseif_col = child:start()
+      table.insert(positions, {
+        row = elseif_row + 1,
+        col = elseif_col,
+        type = "elseif_keyword",
+      })
+    -- Lua: else_statement (flat structure, direct child)
+    elseif child:type() == "else_statement" then
+      local else_row, else_col = child:start()
+      table.insert(positions, {
+        row = else_row + 1,
+        col = else_col,
+        type = "else_keyword",
+      })
     end
   end
   
@@ -154,8 +188,19 @@ function M.collect_else_clauses(if_node)
 end
 
 -- Find the closing bracket of the final block
+-- Handles both TypeScript/JavaScript (}) and Lua (end)
 function M.find_closing_bracket(if_node)
-  -- Find the last statement_block or else_clause
+  -- For Lua: look for 'end' keyword child
+  for i = 0, if_node:child_count() - 1 do
+    local child = if_node:child(i)
+    if child:type() == "end" then
+      -- Found Lua 'end' keyword
+      local end_row, end_col = child:start()
+      return end_row, end_col
+    end
+  end
+  
+  -- For TypeScript/JavaScript: find the last statement_block or else_clause
   local last_block = nil
   
   for i = 0, if_node:child_count() - 1 do
@@ -235,6 +280,14 @@ function M.adjust_for_visual_mode(position)
     return {
       row = position.row,
       col = position.col + 3,  -- End of 'else' part
+      type = position.type,
+    }
+  end
+  
+  if position.type == "elseif_keyword" then
+    return {
+      row = position.row,
+      col = position.col + 5,  -- End of 'elseif' (6 chars - 1)
       type = position.type,
     }
   end

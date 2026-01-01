@@ -641,5 +641,179 @@ test("Block-loop: Property value cycle back from end", function()
   assert_eq(197, pos[1], "Should jump back to end of chain")
 end)
 
+-- ============================================================================
+-- LUA IF-ELSE BLOCK-LOOP TESTS
+-- ============================================================================
+
+test("Block-loop: Lua if-else cycle", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit lua/sibling_jump/init.lua")
+  
+  -- Test on line 106: if ctx2 ~= nil then
+  vim.api.nvim_win_set_cursor(0, {106, 12})  -- On 'if'
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(109, pos[1], "Should jump from if (L106) to else (L109)")
+  assert_eq(10, pos[2], "Should be at 'else' keyword")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(112, pos[1], "Should jump from else (L109) to end (L112)")
+  assert_eq(10, pos[2], "Should be at 'end' keyword")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(106, pos[1], "Should cycle back to if (L106)")
+end)
+
+test("Block-loop: Lua if-elseif-else full cycle", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/lua_if_else.lua")
+  
+  -- Start at line 7: if x > 20 then
+  vim.api.nvim_win_set_cursor(0, {7, 2})  -- On 'if'
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(9, pos[1], "Should jump from if (L7) to first elseif (L9)")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(11, pos[1], "Should jump from first elseif (L9) to second elseif (L11)")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(13, pos[1], "Should jump from second elseif (L11) to else (L13)")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(15, pos[1], "Should jump from else (L13) to end (L15)")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(7, pos[1], "Should cycle back to if (L7)")
+end)
+
+-- ============================================================================
+-- LOOP BLOCK-LOOP TESTS (TypeScript/JavaScript)
+-- ============================================================================
+
+test("Block-loop: TypeScript for loop cycle", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/loops.ts")
+  
+  -- Start at line 6: for (let i = 0; ...)
+  vim.api.nvim_win_set_cursor(0, {6, 2})  -- On 'for'
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(8, pos[1], "Should jump from for (L6) to closing } (L8)")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(6, pos[1], "Should cycle back to for (L6)")
+end)
+
+test("Block-loop: TypeScript while loop cycle", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/loops.ts")
+  
+  -- Start at line 16: while (count < 10)
+  vim.api.nvim_win_set_cursor(0, {16, 2})  -- On 'while'
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(19, pos[1], "Should jump from while (L16) to closing } (L19)")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(16, pos[1], "Should cycle back to while (L16)")
+end)
+
+test("Block-loop: TypeScript for...of loop cycle", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/loops.ts")
+  
+  -- Start at line 27: for (const value of values)
+  vim.api.nvim_win_set_cursor(0, {27, 2})  -- On 'for'
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(29, pos[1], "Should jump from for...of (L27) to closing } (L29)")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(27, pos[1], "Should cycle back to for...of (L27)")
+end)
+
+test("Block-loop: TypeScript for...in loop cycle", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/loops.ts")
+  
+  -- Start at line 37: for (const key in obj)
+  vim.api.nvim_win_set_cursor(0, {37, 2})  -- On 'for'
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(39, pos[1], "Should jump from for...in (L37) to closing } (L39)")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(37, pos[1], "Should cycle back to for...in (L37)")
+end)
+
+-- ============================================================================
+-- LOOP BLOCK-LOOP TESTS (Lua)
+-- ============================================================================
+
+test("Block-loop: Lua for loop cycle", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/lua_loops.lua")
+  
+  -- Start at line 8: for i = 1, 10 do
+  vim.api.nvim_win_set_cursor(0, {8, 2})  -- On 'for'
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(10, pos[1], "Should jump from for (L8) to end (L10)")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(8, pos[1], "Should cycle back to for (L8)")
+end)
+
+test("Block-loop: Lua while loop cycle", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/lua_loops.lua")
+  
+  -- Start at line 18: while count < 10 do
+  vim.api.nvim_win_set_cursor(0, {18, 2})  -- On 'while'
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(20, pos[1], "Should jump from while (L18) to end (L20)")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(18, pos[1], "Should cycle back to while (L18)")
+end)
+
+test("Block-loop: Lua for...in loop cycle", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/lua_loops.lua")
+  
+  -- Start at line 29: for i, value in ipairs(items) do
+  vim.api.nvim_win_set_cursor(0, {29, 2})  -- On 'for'
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(31, pos[1], "Should jump from for...in (L29) to end (L31)")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(29, pos[1], "Should cycle back to for...in (L29)")
+end)
+
 -- Run all tests
 run_tests()
