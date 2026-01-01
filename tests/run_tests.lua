@@ -18,18 +18,20 @@ local function assert_eq(expected, actual, message)
 end
 
 local function run_tests()
-  print("=== Running sibling_jump tests ===\n")
+  print("=== Running sibling_jump tests ===")
+  print("")
 
   for _, t in ipairs(tests) do
-    io.write("Testing: " .. t.name .. " ... ")
-
     local ok, err = pcall(t.fn)
 
     if ok then
-      print("✓ PASS")
+      -- Format with fixed width for alignment
+      local status = "✓ PASS"
+      print(string.format("%-90s %s", t.name, status))
       passed = passed + 1
     else
-      print("✗ FAIL")
+      local status = "✗ FAIL"
+      print(string.format("%-90s %s", t.name, status))
       print("  Error: " .. tostring(err))
       failed = failed + 1
     end
@@ -38,7 +40,8 @@ local function run_tests()
     vim.cmd("bufdo! bwipeout!")
   end
 
-  print(string.format("\n=== Results: %d passed, %d failed ===", passed, failed))
+  print("")
+  print(string.format("=== Results: %d passed, %d failed ===", passed, failed))
 
   if failed > 0 then
     vim.cmd("cquit 1")
@@ -399,6 +402,46 @@ test("Context boundaries: inside method chain value works", function()
   sibling_jump.jump_to_sibling({ forward = true })
   local pos = vim.api.nvim_win_get_cursor(0)
   assert_eq(14, pos[1], "Should navigate within method chain value")
+end)
+
+test("Object properties: shorthand property forward navigation", function()
+  vim.cmd("edit tests/fixtures/object_properties.ts")
+  vim.api.nvim_win_set_cursor(0, { 32, 2 }) -- On "registered" shorthand property
+
+  -- Forward should jump to next shorthand property
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(33, pos[1], "Should jump from registered to scenario")
+end)
+
+test("Object properties: shorthand property backward navigation", function()
+  vim.cmd("edit tests/fixtures/object_properties.ts")
+  vim.api.nvim_win_set_cursor(0, { 33, 2 }) -- On "scenario" shorthand property
+
+  -- Backward should jump to previous shorthand property
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(32, pos[1], "Should jump from scenario back to registered")
+end)
+
+test("Object properties: mixed shorthand and normal properties forward", function()
+  vim.cmd("edit tests/fixtures/object_properties.ts")
+  vim.api.nvim_win_set_cursor(0, { 33, 2 }) -- On "scenario" shorthand property
+
+  -- Forward should jump to normal property
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(34, pos[1], "Should jump from shorthand to normal property")
+end)
+
+test("Object properties: mixed normal and shorthand properties backward", function()
+  vim.cmd("edit tests/fixtures/object_properties.ts")
+  vim.api.nvim_win_set_cursor(0, { 34, 2 }) -- On "normalProp" (regular pair property)
+
+  -- Backward should jump to shorthand property
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(33, pos[1], "Should jump from normal property back to shorthand")
 end)
 
 test("Arrays: forward navigation", function()
@@ -1583,6 +1626,15 @@ test("Lua if-else-elseif: backward from statement after chain jumps to last else
   sibling_jump.jump_to_sibling({ forward = false })
   local pos = vim.api.nvim_win_get_cursor(0)
   assert_eq(13, pos[1], "Should jump from return (L17) to else (L13), not to if")
+end)
+
+test("Lua nested if-elseif: navigate inner chain not outer", function()
+  vim.cmd("edit lua/sibling_jump/node_finder.lua")
+  vim.api.nvim_win_set_cursor(0, { 188, 8 }) -- On nested 'if parent and parent:type() == "pair"'
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(207, pos[1], "Should jump from nested if (L188) to its elseif (L207), not outer if's siblings")
 end)
 
 -- ============================================================================

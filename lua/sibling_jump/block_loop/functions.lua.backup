@@ -1,0 +1,193 @@
+-- Function declaration and arrow function detection and navigation
+
+local utils = require("sibling_jump.block_loop.utils")
+
+local M = {}
+
+-- Detect if cursor is on a function declaration or arrow function
+-- Returns: detected (bool), context (table or nil)
+function M.detect(node, cursor_pos)
+  if not node then
+    return false, nil
+  end
+  
+  -- Check for function_declaration or method_definition (class methods)
+  local func_node = utils.find_ancestor(node, {"function_declaration", "method_definition"})
+  
+  if func_node then
+    local context = M.build_context_for_function(func_node)
+    
+    -- Check if cursor is on any boundary position
+    for _, pos in ipairs(context.positions) do
+      if pos.row == cursor_pos[1] then
+        return true, context
+      end
+    end
+    
+    return false, nil
+  end
+  
+  -- Check for arrow function with const/let/var
+  local lexical = utils.find_ancestor(node, {"lexical_declaration", "variable_declaration"})
+  if lexical then
+    -- Find arrow_function child
+    local arrow = M.find_arrow_function_in_declaration(lexical)
+    if arrow then
+      local context = M.build_context_for_arrow(lexical, arrow)
+      
+      -- Check if cursor is on any boundary position
+      for _, pos in ipairs(context.positions) do
+        if pos.row == cursor_pos[1] then
+          return true, context
+        end
+      end
+    end
+  end
+  
+  return false, nil
+end
+
+-- Build context for regular function declaration
+function M.build_context_for_function(func_node)
+  local positions = {}
+  
+  -- Position 0: 'function' keyword
+  local start_row, start_col = func_node:start()
+  table.insert(positions, {
+    row = start_row + 1,
+    col = start_col,
+    type = "function_keyword",
+  })
+  
+  -- Position 1: Closing bracket of function body
+  local body = M.find_statement_block(func_node)
+  if body then
+    local _, _, end_row, end_col = body:range()
+    table.insert(positions, {
+      row = end_row + 1,
+      col = end_col,
+      type = "closing_bracket",
+    })
+  else
+    -- Fallback: use function node's end
+    local _, _, end_row, end_col = func_node:range()
+    table.insert(positions, {
+      row = end_row + 1,
+      col = end_col,
+      type = "closing_bracket",
+    })
+  end
+  
+  return {
+    positions = positions,
+    node = func_node,
+  }
+end
+
+-- Build context for arrow function with declaration
+function M.build_context_for_arrow(decl_node, arrow_node)
+  local positions = {}
+  
+  -- Position 0: Declaration keyword (const/let/var)
+  local start_row, start_col = decl_node:start()
+  table.insert(positions, {
+    row = start_row + 1,
+    col = start_col,
+    type = "declaration_keyword",
+  })
+  
+  -- Position 1: Closing bracket of arrow function body
+  local body = M.find_statement_block(arrow_node)
+  if body then
+    local _, _, end_row, end_col = body:range()
+    table.insert(positions, {
+      row = end_row + 1,
+      col = end_col,
+      type = "closing_bracket",
+    })
+  else
+    -- Fallback: use arrow node's end
+    local _, _, end_row, end_col = arrow_node:range()
+    table.insert(positions, {
+      row = end_row + 1,
+      col = end_col,
+      type = "closing_bracket",
+    })
+  end
+  
+  return {
+    positions = positions,
+    node = decl_node,
+  }
+end
+
+-- Navigate to next position in cycle
+function M.navigate(context, cursor_pos, mode)
+  local positions = context.positions
+  local current_row = cursor_pos[1]
+  
+  -- Find current position index
+  local current_index = 1
+  for i, pos in ipairs(positions) do
+    if pos.row == current_row then
+      current_index = i
+      break
+    end
+  end
+  
+  -- Cycle to next (wrapping)
+  local next_index = (current_index % #positions) + 1
+  return positions[next_index]
+end
+
+-- Helper to find statement_block in a node
+function M.find_statement_block(node)
+  for i = 0, node:child_count() - 1 do
+    local child = node:child(i)
+    if child:type() == "statement_block" then
+      return child
+    end
+  end
+  return nil
+end
+
+-- Helper to find arrow_function in declaration (recursively)
+-- Only finds arrow functions that are the direct value, not nested in call arguments
+function M.find_arrow_function_in_declaration(decl_node)
+  local function search(node, depth)
+    if node:type() == "arrow_function" and depth <= 5 then
+      -- Make sure this arrow function is not inside a call_expression's arguments
+      -- Check parent chain
+      local parent = node:parent()
+      local check_depth = 0
+      while parent and check_depth < 5 do
+        if parent:type() == "arguments" then
+          -- This arrow function is inside function arguments, skip it
+          return nil
+        end
+        if parent == decl_node then
+          -- Reached the declaration node, this is a direct arrow function
+          return node
+        end
+        parent = parent:parent()
+        check_depth = check_depth + 1
+      end
+      return node
+    end
+    
+    -- Don't search inside call_expression arguments
+    if node:type() == "arguments" then
+      return nil
+    end
+    
+    for i = 0, node:child_count() - 1 do
+      local found = search(node:child(i), depth + 1)
+      if found then return found end
+    end
+    return nil
+  end
+  
+  return search(decl_node, 0)
+end
+
+return M
