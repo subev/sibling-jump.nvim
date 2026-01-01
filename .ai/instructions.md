@@ -1,37 +1,15 @@
 # sibling-jump.nvim - AI Development Instructions
 
-## Project Overview
+## Quick Reference
 
-**sibling-jump.nvim** is a Neovim plugin for context-aware navigation between sibling nodes using Tree-sitter. It provides intelligent code navigation that keeps you at the right level of abstraction.
+**sibling-jump.nvim** is a Neovim plugin for context-aware navigation between sibling nodes using Tree-sitter.
 
-**Primary Language Support:** TypeScript/JavaScript/JSX/TSX  
-**Partial Support:** Python, Lua, and other Tree-sitter enabled languages
+**Primary Language Support:** TypeScript/JavaScript/JSX/TSX, Lua  
+**Partial Support:** Python, Java, C, C++, C#
 
-## Project Structure
+## Essential Information
 
-```
-sibling-jump.nvim/
-├── lua/sibling_jump/
-│   └── init.lua           # Main plugin implementation
-├── plugin/
-│   └── sibling-jump.lua   # Plugin loader (sets vim.g.loaded_sibling_jump)
-├── tests/
-│   ├── fixtures/          # Test fixture files (TS/JS/JSX/TSX)
-│   ├── sibling_jump_spec.lua  # Main test suite
-│   ├── run_tests.lua      # Direct test runner (NO plenary)
-│   ├── run_js_tests.lua   # JavaScript compatibility tests
-│   ├── minimal_init.lua   # Test environment setup
-│   └── test_runner.sh     # Shell wrapper for running tests
-├── README.md
-├── CHANGELOG.md
-├── LICENSE
-└── .ai/
-    └── instructions.md    # This file
-```
-
-## Important Technical Details
-
-### 1. Module Naming Convention
+### Module Naming Convention
 
 **Critical:** The plugin uses `sibling_jump` (with underscore) internally but the repo is `sibling-jump.nvim` (with hyphen).
 
@@ -41,234 +19,72 @@ sibling-jump.nvim/
 
 Always use underscore when requiring the module or referencing Lua code!
 
-### 2. Test Infrastructure
+### Running Tests
 
-**DO NOT use plenary.nvim for tests!** The test suite uses a custom direct test runner because plenary's test isolation breaks Tree-sitter parser access.
-
-**Running tests:**
 ```bash
 cd /path/to/sibling-jump.nvim
 bash tests/test_runner.sh
 ```
 
-**Test structure:**
-- Tests run directly in Neovim's environment with full Tree-sitter support
-- 86 comprehensive tests covering all navigation scenarios
-- Test fixtures are actual TypeScript/JavaScript files
-- Tests must use absolute paths for fixtures (they're in `tests/fixtures/`)
+**DO NOT use plenary.nvim for tests!** The test suite uses a custom direct test runner because plenary's test isolation breaks Tree-sitter parser access.
 
-**When adding tests:**
-- Add fixture files to `tests/fixtures/`
-- Update `tests/run_tests.lua` with new test cases
-- Use the `test(name, fn)` function pattern
-- Use `assert_eq(expected, actual, message)` for assertions
+### Development Rules
 
-### 3. Core Navigation Logic
+1. **Always run tests after any change** - All tests must pass
+2. **Never break backward compatibility** - Public API is sacred
+3. **Always ask before committing** - Never auto-commit changes
+4. **Test-driven development** - Write failing test before fixing bugs
+5. **Use underscore in module names** - `sibling_jump` not `sibling-jump`
 
-The plugin identifies "meaningful nodes" (statements, declarations, properties) and navigates between siblings at the same nesting level.
+## Comprehensive Documentation
 
-**Key functions in `lua/sibling_jump/init.lua`:**
-- `is_meaningful_node()` - Defines which Tree-sitter node types are navigation targets
-- `get_node_at_cursor()` - Finds the appropriate node at cursor with context awareness
-- `get_sibling_node()` - Locates the next/previous sibling
-- `jump_to_sibling()` - Main navigation function with count support
+For detailed development guidelines, architecture documentation, and best practices, see:
 
-**Special navigation modes:**
-- **Method chains:** Navigate between chained method calls (`.foo().bar().baz()`)
-- **If-else chains:** Navigate between if/else-if/else clauses
-- **Whitespace navigation:** Jump to closest statement when on empty lines
-- **JSX elements:** Cursor lands on tag name, not angle bracket
-- **Context boundaries:** Prevents jumping out of current context (e.g., single property in object)
+- **`AGENTS.md`** - Complete AI agent development instructions
+- **`ARCHITECTURE.md`** - Module structure and design decisions
+- **`README.md`** - User-facing documentation
 
-### 4. Adding Language Support
+## Quick Architecture Overview
 
-To add support for a new language:
+### Two Navigation Modes
 
-1. **Add meaningful node types** to the `meaningful_types` table in `is_meaningful_node()`
-2. **Add container types** if needed (for list-like structures)
-3. **Test thoroughly** - create test fixtures and add to test suite
+1. **Sibling Navigation** - Jump between nodes at the same nesting level (horizontal movement)
+2. **Block-Loop** - Cycle through structural boundaries of a single block (vertical movement)
 
-**Example meaningful types for a language:**
-- Statements (expression_statement, if_statement, etc.)
-- Declarations (function_declaration, class_declaration, etc.)
-- Properties (pair, property_signature, etc.)
+### Project Structure
 
-### 5. Configuration Options
-
-The plugin exposes these configuration options:
-
-```lua
-require("sibling_jump").setup({
-  next_key = "<C-j>",       -- Default: <C-j>
-  prev_key = "<C-k>",       -- Default: <C-k>
-  center_on_jump = false,   -- Default: false
-  filetypes = nil,          -- Default: nil (global keymaps). Set to table for buffer-local keymaps
-})
+```
+lua/sibling_jump/
+├── init.lua              - Public API & orchestration
+├── config.lua            - Static configuration
+├── node_finder.lua       - AST node detection
+├── navigation.lua        - Sibling finding
+├── positioning.lua       - Cursor positioning
+├── utils.lua             - Shared helpers
+├── special_modes/        - Special navigation patterns
+└── block_loop/           - Block boundary navigation
+    ├── block_loop.lua    - Orchestrator
+    └── */                - Individual handlers
 ```
 
-**Recommended lazy.nvim configuration:**
-
-For optimal performance and to avoid keymap conflicts, restrict the plugin to TypeScript/JavaScript files only:
-
-```lua
-{
-  "subev/sibling-jump.nvim",
-  ft = { "typescript", "javascript", "typescriptreact", "javascriptreact" },
-  config = function()
-    require("sibling_jump").setup({
-      next_key = "<C-j>",
-      prev_key = "<C-k>",
-      center_on_jump = true,
-      filetypes = { "typescript", "javascript", "typescriptreact", "javascriptreact" },
-    })
-  end,
-}
-```
-
-**How it works:**
-- `ft` parameter ensures lazy loading (plugin only loads when you open a TS/JS file)
-- `filetypes` option creates **buffer-local** keymaps via FileType autocommand
-- Keymaps only active in TS/JS buffers, avoiding conflicts with other filetypes
-- Without `filetypes` option, keymaps are global (original behavior, backward compatible)
-
-**Manual buffer control commands:**
-
-Users can manually enable/disable sibling-jump for any buffer:
-
-```vim
-:SiblingJumpBufferEnable   " Enable for current buffer
-:SiblingJumpBufferDisable  " Disable for current buffer  
-:SiblingJumpBufferToggle   " Toggle on/off for current buffer
-:SiblingJumpBufferStatus   " Check if enabled for current buffer
-```
-
-These commands are useful for:
-- Testing the plugin in non-TS/JS files (Python, Lua, etc.)
-- Temporarily enabling for specific files without changing config
-- Debugging and experimentation
-
-**Plugin behavior:**
-- Adds positions to jump list before moving (`m'`)
-- Supports vim counts (e.g., `3<C-j>` jumps 3 siblings forward)
-- Silent no-ops at boundaries (doesn't show errors)
-- Buffer state tracked via `enabled_buffers` table
-- Commands show notifications on success/failure
-
-## Development Guidelines
-
-### Code Style
-
-- Use 2-space indentation
-- Prefer local functions for internal logic
-- Comment complex Tree-sitter logic explaining the node structure
-- Keep functions focused and single-purpose
-
-### When Making Changes
-
-1. **Always run tests** after changes: `bash tests/test_runner.sh`
-2. **Update CHANGELOG.md** with your changes
-3. **Add tests** for new navigation scenarios
-4. **Update README.md** if adding user-facing features
-
-### Tree-sitter Node Investigation
-
-When debugging or adding features, inspect Tree-sitter nodes:
-
-```lua
--- Get node at cursor
-local node = vim.treesitter.get_node()
-
--- Print node type
-print(node:type())
-
--- Print node structure
-print(vim.inspect(node))
-
--- See node in Tree-sitter playground
-:TSPlaygroundToggle
-```
-
-### Common Patterns
-
-**Walking up the tree to find a meaningful node:**
-```lua
-local current = node
-while current do
-  if is_meaningful_node(current) then
-    return current, current:parent()
-  end
-  current = current:parent()
-end
-```
-
-**Checking if node is in a special container:**
-```lua
-local parent = node:parent()
-if parent and parent:type() == "container_type" then
-  -- Special handling
-end
-```
-
-## Testing Best Practices
-
-1. **Test edge cases:** boundaries, single elements, nested contexts
-2. **Test all languages:** TS, JS, JSX, TSX (use run_js_tests.lua for JS-specific)
-3. **Name tests descriptively:** "JSX elements: forward navigation between self-closing"
-4. **Use fixture files:** Don't generate code in tests, use pre-made fixtures
-5. **Test from user perspective:** Position cursor, jump, verify position
-
-## Git Workflow
-
-This plugin is developed directly in the lazy.nvim installation:
+## Common Commands
 
 ```bash
-cd ~/.local/share/nvim/lazy/sibling-jump.nvim
+# Run tests
+bash tests/test_runner.sh
 
-# Make changes
-git add -A
-git commit -m "feat: add description"
+# Check Tree-sitter structure
+:InspectTree  # Neovim 0.9+
+:TSPlaygroundToggle  # With nvim-treesitter-playground
 
-# Push to GitHub
-git push origin main
+# Debug navigation
+:lua print(vim.treesitter.get_node():type())
 ```
 
-**Branch strategy:** Main development happens on `main` branch since this is a personal/small project.
+## When in Doubt
 
-## Common Gotchas
-
-1. **Tree-sitter node types vary by language** - Always check the actual node type names for each language
-2. **Nested unions are parsed as nested union_type nodes** - Need special handling to collect all members
-3. **JSX elements have complex nesting** - jsx_opening_element → jsx_element → jsx_fragment
-4. **Context boundaries are important** - Single child in list should be no-op (don't exit context)
-5. **Test paths must be absolute** - Relative paths won't work in the test runner
-
-## Performance Considerations
-
-- Plugin uses pcall() for safe Tree-sitter access
-- Minimal vim API calls in hot paths
-- Tree walking is bounded (max depth limits to prevent infinite loops)
-- No async operations needed (navigation is synchronous)
-
-## Related Projects
-
-Similar navigation approaches:
-- nvim-treesitter-textobjects (more general textobject selection)
-- vim-unimpaired (line-based navigation)
-- targets.vim (text object expansion)
-
-**Key differentiator:** sibling-jump is context-aware and uses Tree-sitter structure, not line/text patterns.
-
-## Maintainer Notes
-
-- Repo owner: @subev
-- Primary use case: TypeScript/React development
-- Open to PRs for additional language support
-- Tests must pass for all changes
-
-## Questions?
-
-When working on this codebase, if you're unsure:
-1. Check the test suite - it documents expected behavior
-2. Read Tree-sitter documentation for node types
-3. Use `:TSPlaygroundToggle` to inspect actual Tree-sitter structure
-4. Run tests frequently to catch regressions early
+1. Check `AGENTS.md` for comprehensive guidelines
+2. Check `ARCHITECTURE.md` for design decisions
+3. Use `:InspectTree` to inspect Tree-sitter structure
+4. Run tests frequently to catch regressions
+5. Ask the user!
