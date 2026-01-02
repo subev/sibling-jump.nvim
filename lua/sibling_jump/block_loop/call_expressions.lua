@@ -32,7 +32,7 @@ function M.detect(node, cursor_pos)
 
   -- Case 2: Cursor on method/function name (property_identifier or identifier)
   if current:type() == "property_identifier" or current:type() == "identifier" then
-    -- Walk up to find if this is part of a call_expression
+    -- Walk up to find if this is part of a call_expression (JS/TS)
     -- This handles nested member expressions like analytics.foo.capture()
     local call_expr, await_expr = M.find_parent_call_expression(current)
 
@@ -46,18 +46,69 @@ function M.detect(node, cursor_pos)
         return true, context
       end
     end
+    
+    -- Case 2b: Lua - cursor on identifier that's the start of a function_call chain
+    -- e.g., cursor on 'vim' in 'vim.keymap.set(...)'
+    -- or cursor on 'table' in 'table:insert(...)'
+    if current:type() == "identifier" then
+      local lua_call = M.find_lua_function_call(current)
+      if lua_call then
+        -- Check if this function_call is inside a variable_declaration
+        -- If so, skip so declarations handler takes over (consistent local ↔ closing paren navigation)
+        local is_in_var_decl = M.is_lua_call_in_variable_declaration(lua_call)
+        if not is_in_var_decl then
+          local node_row = current:start()
+          if node_row == cursor_pos[1] - 1 then
+            local context = M.build_context(lua_call, current, nil)
+            return true, context
+          end
+        end
+      end
+    end
   end
 
-  -- Case 3: Cursor on closing paren/bracket - walk up to find call_expression
+  -- Case 3: Cursor on closing paren/bracket - walk up to find call_expression or function_call
   -- This handles the case when cycling back from the closing position
   local parent = current:parent()
   while parent do
-    if parent:type() == "call_expression" then
+    if parent:type() == "call_expression" or parent:type() == "function_call" then
       local _, _, end_row, end_col = parent:range()
       -- Check if cursor is on the ending line of this call_expression
       if end_row == cursor_pos[1] - 1 then
+        -- Skip if this is a simple call directly assigned to a variable: const x = foo()
+        -- But allow method chains: const x = obj.method()
+        local grandparent = parent:parent()
+        
+        -- TypeScript/JavaScript: call_expression -> variable_declarator
+        if grandparent and grandparent:type() == "variable_declarator" then
+          -- Check if this is a simple call (first child is identifier) vs method chain (first child is member_expression)
+          local first_child = parent:child(0)
+          if first_child and first_child:type() == "identifier" then
+            -- Simple call: const x = foo()
+            -- Skip it and let declarations handler deal with it
+            parent = grandparent:parent()
+            goto continue
+          end
+          -- Otherwise it's a method chain, allow call_expressions handler to process it
+        end
+        
+        -- Lua: function_call -> expression_list -> assignment_statement -> variable_declaration
+        if grandparent and grandparent:type() == "expression_list" then
+          local assignment = grandparent:parent()
+          if assignment and assignment:type() == "assignment_statement" then
+            local var_decl = assignment:parent()
+            if var_decl and var_decl:type() == "variable_declaration" then
+              -- This is a Lua declaration like: local x = foo() or local x = obj.method()
+              -- Skip ALL calls inside variable_declaration so declarations handler takes over
+              -- This ensures consistent navigation: local ↔ closing paren
+              parent = var_decl:parent()
+              goto continue
+            end
+          end
+        end
+        
         -- Check if this call is wrapped in await_expression
-        local await_expr = parent:parent()
+        local await_expr = grandparent
         if await_expr and await_expr:type() ~= "await_expression" then
           await_expr = nil
         end
@@ -70,6 +121,7 @@ function M.detect(node, cursor_pos)
         end
       end
     end
+    ::continue::
     parent = parent:parent()
   end
 
@@ -160,6 +212,7 @@ end
 -- For await expressions, returns the await keyword
 -- For member expressions, returns the property_identifier (method name)
 -- For simple calls, returns the identifier
+-- For Lua function_call, returns the leftmost identifier
 function M.find_name_node_for_call(call_expr, await_expr)
   if await_expr then
     -- Return the await keyword
@@ -170,7 +223,20 @@ function M.find_name_node_for_call(call_expr, await_expr)
     end
   end
 
-  -- Not awaited, find the function name
+  -- For Lua function_call, find the leftmost identifier
+  if call_expr:type() == "function_call" then
+    -- The function name is in the "name" field or first child
+    local func_name = call_expr:field("name")[1]
+    if not func_name then
+      func_name = call_expr:child(0)
+    end
+    
+    if func_name then
+      return M.find_leftmost_identifier(func_name)
+    end
+  end
+
+  -- For JS/TS call_expression, find the function name
   local func = call_expr:field("function")[1]
   if func and func:type() == "member_expression" then
     -- For member expressions, use the property (method name)
@@ -248,17 +314,117 @@ function M.navigate(context, cursor_pos, mode)
     return context.positions[#context.positions]
   end
 
-  -- Cycle through positions
-  if mode == "normal" then
-    -- Normal mode: cycle forward (loop back to start)
-    local next_index = context.current_index + 1
-    if next_index > #context.positions then
-      next_index = 1
-    end
-    return context.positions[next_index]
+  -- Cycle through positions (works in both normal and visual mode)
+  local next_index = context.current_index + 1
+  if next_index > #context.positions then
+    next_index = 1
   end
+  return context.positions[next_index]
+end
 
+-- ============================================================================
+-- LUA SUPPORT FUNCTIONS
+-- ============================================================================
+
+-- Check if ancestor contains descendant
+function M.node_contains(ancestor, descendant)
+  if not ancestor or not descendant then return false end
+  if ancestor == descendant then return true end
+  
+  local current = descendant
+  while current do
+    if current == ancestor then return true end
+    current = current:parent()
+  end
+  return false
+end
+
+-- Find the leftmost identifier in a Lua chain
+-- e.g., for 'vim.keymap.set', returns 'vim' node
+-- e.g., for 'table:insert', returns 'table' node
+function M.find_leftmost_identifier(node)
+  if not node then return nil end
+  
+  if node:type() == "identifier" then
+    return node
+  end
+  
+  if node:type() == "dot_index_expression" 
+      or node:type() == "method_index_expression" then
+    -- First child is the object/table
+    local first = node:child(0)
+    return M.find_leftmost_identifier(first)
+  end
+  
+  -- For other node types, try to find identifier children
+  for child in node:iter_children() do
+    local id = M.find_leftmost_identifier(child)
+    if id then return id end
+  end
+  
   return nil
+end
+
+-- Find a Lua function_call that this node is part of
+-- Walks up through dot_index_expression and method_index_expression chains
+-- Returns: function_call node or nil
+function M.find_lua_function_call(node)
+  local current = node
+  local depth = 0
+  
+  while current and depth < 20 do
+    local parent = current:parent()
+    if not parent then break end
+    
+    if parent:type() == "function_call" then
+      -- Verify this node is the "function" part, not an argument
+      -- In Lua, the function part is typically the first child (name field)
+      local func_node = parent:field("name")[1]
+      if not func_node then
+        func_node = parent:child(0)
+      end
+      
+      if func_node and M.node_contains(func_node, node) then
+        return parent
+      end
+      return nil
+    elseif parent:type() == "dot_index_expression" 
+        or parent:type() == "method_index_expression" then
+      -- Continue walking up the chain
+      current = parent
+    elseif parent:type() == "arguments" then
+      -- We're inside arguments, not the function name
+      return nil
+    else
+      current = parent
+    end
+    
+    depth = depth + 1
+  end
+  
+  return nil
+end
+
+-- Check if a Lua function_call is inside a variable_declaration
+-- Used to defer to declarations handler for consistent navigation
+function M.is_lua_call_in_variable_declaration(func_call)
+  if not func_call or func_call:type() ~= "function_call" then
+    return false
+  end
+  
+  -- Walk up: function_call -> expression_list -> assignment_statement -> variable_declaration
+  local parent = func_call:parent()
+  if parent and parent:type() == "expression_list" then
+    local assignment = parent:parent()
+    if assignment and assignment:type() == "assignment_statement" then
+      local var_decl = assignment:parent()
+      if var_decl and var_decl:type() == "variable_declaration" then
+        return true
+      end
+    end
+  end
+  
+  return false
 end
 
 return M

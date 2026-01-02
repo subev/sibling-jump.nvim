@@ -815,5 +815,265 @@ test("Block-loop: Lua for...in loop cycle", function()
   assert_eq(29, pos[1], "Should cycle back to for...in (L29)")
 end)
 
+-- ============================================================================
+-- LUA FUNCTION CALL BLOCK-LOOP TESTS
+-- ============================================================================
+
+test("Block-loop: Lua simple function call cycle", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/lua_function_calls.lua")
+  
+  -- Line 6: print("hello world")
+  vim.api.nvim_win_set_cursor(0, {6, 2})  -- On 'print'
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(6, pos[1], "Should jump from print to closing ) on same line")
+  assert_eq(21, pos[2], "Should be at closing paren")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(6, pos[1], "Should cycle back to print")
+  assert_eq(2, pos[2], "Should be at 'print'")
+end)
+
+test("Block-loop: Lua dot method call nested chain", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/lua_function_calls.lua")
+  
+  -- Line 18: local buf = vim.api.nvim_get_current_buf()
+  -- Navigation should stay in declaration context: local ↔ closing paren
+  vim.api.nvim_win_set_cursor(0, {18, 2})  -- On 'local'
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(18, pos[1], "Should jump from local to closing )")
+  assert_eq(43, pos[2], "Should be at closing paren")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(18, pos[1], "Should cycle back to local")
+  assert_eq(2, pos[2], "Should be at 'local' keyword")
+end)
+
+test("Block-loop: Lua colon method call", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/lua_function_calls.lua")
+  
+  -- Line 25: table.insert(t, 4)
+  vim.api.nvim_win_set_cursor(0, {25, 2})  -- On 'table'
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(25, pos[1], "Should jump from table to closing )")
+  assert_eq(19, pos[2], "Should be at closing paren")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(25, pos[1], "Should cycle back to table")
+  assert_eq(2, pos[2], "Should be at 'table'")
+end)
+
+test("Block-loop: Lua multi-line function call (THE ISSUE!)", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/lua_function_calls.lua")
+  
+  -- Line 31: vim.keymap.set("n", "<leader>x", function() ... end, {...})
+  -- This is the exact pattern from the user's original issue!
+  vim.api.nvim_win_set_cursor(0, {31, 2})  -- On 'vim'
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(33, pos[1], "Should jump from vim (L31) to closing ) (L33)")
+  assert_eq(31, pos[2], "Should be at closing paren")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(31, pos[1], "Should cycle back to vim (L31)")
+  assert_eq(2, pos[2], "Should be at 'vim'")
+end)
+
+test("Block-loop: Lua nested method chain with args", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/lua_function_calls.lua")
+  
+  -- Line 40: vim.api.nvim_win_set_cursor(0, { 1, 0 })
+  vim.api.nvim_win_set_cursor(0, {40, 2})  -- On 'vim'
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(40, pos[1], "Should jump from vim to closing )")
+  assert_eq(41, pos[2], "Should be at closing paren")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(40, pos[1], "Should cycle back to vim")
+  assert_eq(2, pos[2], "Should be at 'vim'")
+end)
+
+test("Block-loop: Lua deeply nested chain", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/lua_function_calls.lua")
+  
+  -- Line 46: local result = string.gsub(vim.api.nvim_buf_get_name(0), "/", "\\")
+  -- Navigation should stay in declaration context: local ↔ closing paren
+  vim.api.nvim_win_set_cursor(0, {46, 2})  -- On 'local'
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(46, pos[1], "Should jump from local to closing )")
+  assert_eq(68, pos[2], "Should be at closing paren")
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(46, pos[1], "Should cycle back to local")
+  assert_eq(2, pos[2], "Should be at 'local' keyword")
+end)
+
+test("Block-loop: Single-line const declaration with call", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/block_loop.ts")
+  
+  -- Line 217: const singleLineCall = getWelcomeContent(scenario, username, gameData?.name ?? null);
+  vim.api.nvim_win_set_cursor(0, {217, 0})  -- On 'const'
+  
+  -- Jump from const to closing paren
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(217, pos[1], "Should stay on same line")
+  -- Find the closing paren position (should be col 86, not 87 which is semicolon)
+  local line = vim.api.nvim_buf_get_lines(0, 216, 217, false)[1]
+  local expected_col = line:find("%)") - 1  -- 0-indexed column of ')'
+  assert_eq(expected_col, pos[2], "Should be at closing paren, not semicolon")
+  
+  -- Jump back to const
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(217, pos[1], "Should stay on same line")
+  assert_eq(0, pos[2], "Should cycle back to 'const'")
+end)
+
+test("Block-loop: Visual mode selects entire const declaration", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/block_loop.ts")
+  
+  -- Line 217: const singleLineCall = getWelcomeContent(...);
+  vim.api.nvim_win_set_cursor(0, {217, 0})  -- On 'const'
+  
+  -- Trigger in visual mode
+  block_loop.jump_to_boundary({ mode = "visual" })
+  
+  -- Should be in visual mode
+  local mode = vim.api.nvim_get_mode().mode
+  assert_eq("v", mode, "Should be in visual mode")
+  
+  -- Visual selection should span from const to closing paren
+  local visual_start = vim.fn.getpos("v")
+  local visual_end = vim.fn.getpos(".")
+  
+  -- Start should be at const (line 217, col 1 in 1-indexed)
+  assert_eq(217, visual_start[2], "Visual start line should be 217")
+  assert_eq(1, visual_start[3], "Visual start col should be 1 (at 'const')")
+  
+  -- End should be at closing paren
+  assert_eq(217, visual_end[2], "Visual end line should be 217")
+  -- Find expected column (1-indexed)
+  local line = vim.api.nvim_buf_get_lines(0, 216, 217, false)[1]
+  local expected_col = line:find("%)")
+  assert_eq(expected_col, visual_end[3], "Visual end should be at closing paren")
+  
+  -- Exit visual mode
+  vim.cmd("normal! \\<Esc>")
+end)
+
+test("Block-loop: Visual mode selects multi-line if-else", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/block_loop.ts")
+  
+  -- Line 12: if (condition)
+  vim.api.nvim_win_set_cursor(0, {12, 2})  -- On 'if'
+  
+  -- Trigger in visual mode
+  block_loop.jump_to_boundary({ mode = "visual" })
+  
+  -- Should be in visual mode
+  local mode = vim.api.nvim_get_mode().mode
+  assert_eq("v", mode, "Should be in visual mode")
+  
+  -- Visual selection should span from if to else closing brace
+  local visual_start = vim.fn.getpos("v")
+  local visual_end = vim.fn.getpos(".")
+  
+  assert_eq(12, visual_start[2], "Visual start should be on if line")
+  assert_eq(16, visual_end[2], "Visual end should be on else closing brace line")
+  
+  -- Exit visual mode
+  vim.cmd("normal! \\<Esc>")
+end)
+
+test("Block-loop: Lua table literal declaration", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/lua_function_calls.lua")
+  
+  -- Line 61: local test_config = {
+  vim.api.nvim_win_set_cursor(0, {61, 0})  -- On 'local'
+  
+  -- Jump from local to closing brace
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(64, pos[1], "Should jump to closing brace")
+  
+  -- Jump back to local
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(61, pos[1], "Should cycle back to local")
+end)
+
+test("Block-loop: Lua declaration with method call - cursor in middle", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit tests/fixtures/lua_function_calls.lua")
+  
+  -- Line 18: local buf = vim.api.nvim_get_current_buf()
+  -- When cursor is in the middle of the declaration (on 'vim'), should jump to 'local' first
+  vim.api.nvim_win_set_cursor(0, {18, 14})  -- On 'vim' (middle of declaration)
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(18, pos[1], "Should stay on same line")
+  assert_eq(2, pos[2], "Should jump to 'local' keyword first (not closing paren)")
+  
+  -- Then jump to closing paren
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(18, pos[1], "Should stay on same line")
+  assert_eq(43, pos[2], "Should jump to closing paren")
+  
+  -- Then back to local
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(18, pos[1], "Should stay on same line")
+  assert_eq(2, pos[2], "Should cycle back to 'local'")
+end)
+
+test("Block-loop: Lua single-line if statement cycle", function()
+  local block_loop = sibling_jump.block_loop()
+  vim.cmd("edit lua/sibling_jump/init.lua")
+  
+  -- Line 54: if not target then return nil end
+  -- Single-line if should cycle between 'if' and 'end'
+  vim.api.nvim_win_set_cursor(0, {54, 6})  -- On 'if' keyword
+  
+  block_loop.jump_to_boundary({ mode = "normal" })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(54, pos[1], "Should stay on same line")
+  assert_eq(36, pos[2], "Should jump to 'end' keyword")
+  
+  -- Cycle back to 'if'
+  block_loop.jump_to_boundary({ mode = "normal" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(54, pos[1], "Should stay on same line")
+  assert_eq(6, pos[2], "Should cycle back to 'if' keyword")
+end)
+
 -- Run all tests
 run_tests()

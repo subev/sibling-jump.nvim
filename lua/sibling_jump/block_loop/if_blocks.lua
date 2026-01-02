@@ -239,17 +239,38 @@ end
 function M.navigate(context, cursor_pos, mode)
   local positions = context.positions
   local current_row = cursor_pos[1]
+  local current_col = cursor_pos[2]
   
-  -- Find current position index
+  -- Find current position index by matching both row and column
+  -- For single-line if statements, we need column matching to distinguish positions
   local current_index = nil
+  local CLOSE_THRESHOLD = 3  -- Allow small tolerance for cursor positioning
+  
   for i, pos in ipairs(positions) do
     if pos.row == current_row then
-      current_index = i
-      break
+      local col_diff = math.abs(pos.col - current_col)
+      if col_diff <= CLOSE_THRESHOLD then
+        current_index = i
+        break
+      end
     end
   end
   
-  -- If not exactly on a position, find closest
+  -- If not exactly on a position, find closest on same row first, then by row
+  if not current_index then
+    local min_col_diff = math.huge
+    for i, pos in ipairs(positions) do
+      if pos.row == current_row then
+        local col_diff = math.abs(pos.col - current_col)
+        if col_diff < min_col_diff then
+          min_col_diff = col_diff
+          current_index = i
+        end
+      end
+    end
+  end
+  
+  -- If still not found, find closest by row
   if not current_index then
     current_index = utils.find_closest_position_index(positions, current_row)
   end

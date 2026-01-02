@@ -175,16 +175,12 @@ function M.navigate(context, cursor_pos, mode)
     return context.positions[1]
   end
   
-  -- Cycle through positions
-  if mode == "normal" then
-    local next_index = context.current_index + 1
-    if next_index > #context.positions then
-      next_index = 1
-    end
-    return context.positions[next_index]
+  -- Cycle through positions (works in both normal and visual mode)
+  local next_index = context.current_index + 1
+  if next_index > #context.positions then
+    next_index = 1
   end
-  
-  return nil
+  return context.positions[next_index]
 end
 
 return M

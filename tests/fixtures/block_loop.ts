@@ -211,3 +211,9 @@ const multiInputExample = {
     .input(z.object({ id: z.string() }))
     .input(z.object({ id: z.string() })),
 };
+
+// ============ SINGLE-LINE DECLARATIONS ============
+
+const singleLineCall = getWelcomeContent(scenario, username, gameData?.name ?? null);
+
+const anotherExample = calculateTotal(items, discount, shipping);
