@@ -94,6 +94,7 @@ M.MEANINGFUL_TYPES = {
   "label_statement", -- Labels like ::continue::
   "elseif_statement", -- elseif branches
   "else_statement", -- else branches
+  "field", -- Table fields like `key = value` or array entries in table_constructor
   -- Note: do_statement, function_declaration, function_definition are shared with other languages above
 
   -- === Java ===
@@ -127,6 +128,7 @@ M.LIST_CONTAINERS = {
   ["object_pattern"] = true, -- For object destructuring: { foo, bar }
   ["type_parameters"] = true, -- For generic types: <T, U, V>
   ["union_type"] = true, -- For union types: A | B | C
+  ["table_constructor"] = true, -- Lua tables: { key = value, ... } or { "a", "b" }
 }
 
 -- Helper function to check if a node type is meaningful

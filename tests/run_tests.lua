@@ -1838,5 +1838,145 @@ test("Leading whitespace: TypeScript navigation", function()
   assert_eq(4, pos[1], "Should jump from leading whitespace in TypeScript")
 end)
 
+-- ============================================================================
+-- LUA TABLE FIELD NAVIGATION TESTS
+-- ============================================================================
+
+test("Lua tables: forward navigation between fields", function()
+  vim.cmd("edit tests/fixtures/lua_tables.lua")
+  vim.api.nvim_win_set_cursor(0, { 6, 2 }) -- On 'download = false'
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(7, pos[1], "Should jump from download (L6) to vcs (L7)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(8, pos[1], "Should jump from vcs (L7) to highlight_mode (L8)")
+end)
+
+test("Lua tables: backward navigation between fields", function()
+  vim.cmd("edit tests/fixtures/lua_tables.lua")
+  vim.api.nvim_win_set_cursor(0, { 8, 2 }) -- On 'highlight_mode = "treesitter"'
+
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(7, pos[1], "Should jump from highlight_mode (L8) to vcs (L7)")
+  
+  sibling_jump.jump_to_sibling({ forward = false })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(6, pos[1], "Should jump from vcs (L7) to download (L6)")
+end)
+
+test("Lua tables: no-op at first field", function()
+  vim.cmd("edit tests/fixtures/lua_tables.lua")
+  vim.api.nvim_win_set_cursor(0, { 6, 2 }) -- On 'download = false' (first field)
+
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(6, pos[1], "Should not move from first field")
+end)
+
+test("Lua tables: no-op at last field", function()
+  vim.cmd("edit tests/fixtures/lua_tables.lua")
+  vim.api.nvim_win_set_cursor(0, { 8, 2 }) -- On 'highlight_mode' (last field in M.config)
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(8, pos[1], "Should not move from last field")
+end)
+
+test("Lua tables: nested table forward navigation", function()
+  vim.cmd("edit tests/fixtures/lua_tables.lua")
+  vim.api.nvim_win_set_cursor(0, { 13, 2 }) -- On 'keymaps = {...}' nested field
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(18, pos[1], "Should jump from keymaps (L13) to tree (L18)")
+end)
+
+test("Lua tables: nested table backward navigation", function()
+  vim.cmd("edit tests/fixtures/lua_tables.lua")
+  vim.api.nvim_win_set_cursor(0, { 18, 2 }) -- On 'tree = {...}' nested field
+
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(13, pos[1], "Should jump from tree (L18) to keymaps (L13)")
+end)
+
+test("Lua tables: inner nested table navigation", function()
+  vim.cmd("edit tests/fixtures/lua_tables.lua")
+  vim.api.nvim_win_set_cursor(0, { 14, 4 }) -- On 'next_file = "]f"' inside keymaps
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(15, pos[1], "Should jump from next_file (L14) to prev_file (L15)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(16, pos[1], "Should jump from prev_file (L15) to close (L16)")
+end)
+
+test("Lua tables: deeply nested table navigation", function()
+  vim.cmd("edit tests/fixtures/lua_tables.lua")
+  vim.api.nvim_win_set_cursor(0, { 20, 4 }) -- On 'icons = {...}' inside tree
+
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(19, pos[1], "Should jump from icons (L20) to width (L19)")
+end)
+
+test("Lua tables: navigation within deeply nested table", function()
+  vim.cmd("edit tests/fixtures/lua_tables.lua")
+  vim.api.nvim_win_set_cursor(0, { 21, 6 }) -- On 'enable = true' inside icons
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(22, pos[1], "Should jump from enable (L21) to dir_open (L22)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(23, pos[1], "Should jump from dir_open (L22) to dir_closed (L23)")
+end)
+
+test("Lua tables: array-style entries forward navigation", function()
+  vim.cmd("edit tests/fixtures/lua_tables.lua")
+  vim.api.nvim_win_set_cursor(0, { 30, 2 }) -- On '"red"'
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(31, pos[1], "Should jump from 'red' (L30) to 'green' (L31)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(32, pos[1], "Should jump from 'green' (L31) to 'blue' (L32)")
+end)
+
+test("Lua tables: array-style entries backward navigation", function()
+  vim.cmd("edit tests/fixtures/lua_tables.lua")
+  vim.api.nvim_win_set_cursor(0, { 33, 2 }) -- On '"yellow"' (last)
+
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(32, pos[1], "Should jump from 'yellow' (L33) to 'blue' (L32)")
+end)
+
+test("Lua tables: mixed table navigation (keyed and array)", function()
+  vim.cmd("edit tests/fixtures/lua_tables.lua")
+  vim.api.nvim_win_set_cursor(0, { 38, 2 }) -- On 'name = "test"'
+
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(39, pos[1], "Should jump from name (L38) to 'first' (L39)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(40, pos[1], "Should jump from 'first' (L39) to enabled (L40)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(41, pos[1], "Should jump from enabled (L40) to 'second' (L41)")
+end)
+
 -- Run all tests
 run_tests()
