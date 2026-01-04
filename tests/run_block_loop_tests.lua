@@ -953,59 +953,64 @@ test("Block-loop: Single-line const declaration with call", function()
   assert_eq(0, pos[2], "Should cycle back to 'const'")
 end)
 
-test("Block-loop: Visual mode selects entire const declaration", function()
+test("Block-loop: Visual mode progressively extends selection on const declaration", function()
   local block_loop = sibling_jump.block_loop()
   vim.cmd("edit tests/fixtures/block_loop.ts")
   
   -- Line 217: const singleLineCall = getWelcomeContent(...);
   vim.api.nvim_win_set_cursor(0, {217, 0})  -- On 'const'
   
-  -- Trigger in visual mode
+  -- Enter visual mode first
+  vim.cmd("normal! v")
+  
+  -- Trigger block-loop in visual mode - should move to next position (closing paren)
   block_loop.jump_to_boundary({ mode = "visual" })
   
-  -- Should be in visual mode
+  -- Should still be in visual mode
   local mode = vim.api.nvim_get_mode().mode
   assert_eq("v", mode, "Should be in visual mode")
   
-  -- Visual selection should span from const to closing paren
-  local visual_start = vim.fn.getpos("v")
-  local visual_end = vim.fn.getpos(".")
-  
-  -- Start should be at const (line 217, col 1 in 1-indexed)
-  assert_eq(217, visual_start[2], "Visual start line should be 217")
-  assert_eq(1, visual_start[3], "Visual start col should be 1 (at 'const')")
-  
-  -- End should be at closing paren
-  assert_eq(217, visual_end[2], "Visual end line should be 217")
-  -- Find expected column (1-indexed)
+  -- Cursor should be at closing paren (selection extended)
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(217, pos[1], "Should stay on same line")
   local line = vim.api.nvim_buf_get_lines(0, 216, 217, false)[1]
-  local expected_col = line:find("%)")
-  assert_eq(expected_col, visual_end[3], "Visual end should be at closing paren")
+  local expected_col = line:find("%)") - 1  -- 0-indexed
+  assert_eq(expected_col, pos[2], "Should be at closing paren")
   
   -- Exit visual mode
   vim.cmd("normal! \\<Esc>")
 end)
 
-test("Block-loop: Visual mode selects multi-line if-else", function()
+test("Block-loop: Visual mode progressively extends selection on if-else", function()
   local block_loop = sibling_jump.block_loop()
   vim.cmd("edit tests/fixtures/block_loop.ts")
   
   -- Line 12: if (condition)
   vim.api.nvim_win_set_cursor(0, {12, 2})  -- On 'if'
   
-  -- Trigger in visual mode
+  -- Enter visual mode first
+  vim.cmd("normal! v")
+  
+  -- First jump should go to else clause (line 14)
   block_loop.jump_to_boundary({ mode = "visual" })
   
-  -- Should be in visual mode
+  -- Should still be in visual mode
   local mode = vim.api.nvim_get_mode().mode
   assert_eq("v", mode, "Should be in visual mode")
   
-  -- Visual selection should span from if to else closing brace
-  local visual_start = vim.fn.getpos("v")
-  local visual_end = vim.fn.getpos(".")
+  -- Cursor should be at else clause
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(14, pos[1], "Should be on else line after first jump")
   
-  assert_eq(12, visual_start[2], "Visual start should be on if line")
-  assert_eq(16, visual_end[2], "Visual end should be on else closing brace line")
+  -- Second jump should go to closing brace (line 16)
+  block_loop.jump_to_boundary({ mode = "visual" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(16, pos[1], "Should be on closing brace after second jump")
+  
+  -- Third jump should wrap back to if (line 12)
+  block_loop.jump_to_boundary({ mode = "visual" })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(12, pos[1], "Should wrap back to if line")
   
   -- Exit visual mode
   vim.cmd("normal! \\<Esc>")

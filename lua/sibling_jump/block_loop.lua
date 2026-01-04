@@ -56,13 +56,8 @@ function M.jump_to_boundary(opts)
   for _, handler in ipairs(handlers) do
     local detected, context = handler.detect(node, cursor)
     if detected then
-      -- In visual mode, select the entire block from first to last position
-      if mode == "visual" and context.positions and #context.positions >= 2 then
-        M.select_block(context.positions)
-        return
-      end
-      
-      -- In normal mode, navigate to next position
+      -- Navigate to next position (works for both normal and visual mode)
+      -- In visual mode, moving cursor naturally extends the selection
       local target = handler.navigate(context, cursor, mode)
       if target then
         M.jump_to_position(target.row, target.col, mode)

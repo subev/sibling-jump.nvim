@@ -232,7 +232,9 @@ function M.find_closing_bracket(if_node)
   end
   
   local _, _, end_row, end_col = last_block:range()
-  return end_row, end_col
+  -- end_col is exclusive (points after the last char), so subtract 1 to land ON the closing brace
+  local closing_col = end_col > 0 and (end_col - 1) or 0
+  return end_row, closing_col
 end
 
 -- Navigate to next position in cycle

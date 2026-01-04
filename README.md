@@ -245,17 +245,21 @@ for (let i = 0; i < 10; i++) {
 } // ← lands here, <C-j> cycles back
 ```
 
-**Visual mode block selection:**
+**Visual mode progressive selection:**
 
-When you trigger navigation in visual mode while on a block keyword, it selects the entire block:
+In visual mode, block-loop progressively extends the selection with each keypress:
 
 ```typescript
-const data = {
-  // V then <C-j> selects entire declaration
-  name: "test",
-  value: 42,
-}; // ← selection extends to here
+if (condition1) {     // v to start visual, <C-l> →
+  // ...
+} else if (cond2) {   // ← selection extends here, <C-l> →
+  // ...
+} else {              // ← selection extends here, <C-l> →
+  // ...
+}                     // ← selection extends here, <C-l> wraps back
 ```
+
+This lets you precisely control how much of the block to select - useful for selecting just the if-else-if portion without the final else, for example.
 
 ## Configuration
 
