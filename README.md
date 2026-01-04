@@ -2,6 +2,11 @@
 
 Navigate between sibling nodes in your code using Tree-sitter. Context-aware navigation that keeps you at the right level of abstraction.
 
+
+
+https://github.com/user-attachments/assets/62c59d9a-8593-49b2-b124-1e547c2853cd
+
+
 ## Features
 
 - **Context-aware navigation**: Jumps between meaningful code units (statements, properties, array elements, etc.)
