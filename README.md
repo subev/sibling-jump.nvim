@@ -2,10 +2,7 @@
 
 Navigate between sibling nodes in your code using Tree-sitter. Context-aware navigation that keeps you at the right level of abstraction.
 
-
-
 https://github.com/user-attachments/assets/62c59d9a-8593-49b2-b124-1e547c2853cd
-
 
 ## Features
 
@@ -36,6 +33,7 @@ https://github.com/user-attachments/assets/62c59d9a-8593-49b2-b124-1e547c2853cd
 **sibling-jump.nvim** works with any language that has Tree-sitter support. The following languages have been tested:
 
 ### Extensively Tested
+
 - **TypeScript** (.ts)
 - **TSX** (.tsx)
 - **JavaScript** (.js)
@@ -43,6 +41,7 @@ https://github.com/user-attachments/assets/62c59d9a-8593-49b2-b124-1e547c2853cd
 - **Lua** (.lua)
 
 ### Basic Support (Lightly Tested)
+
 - **Java** (.java)
 - **C** (.c)
 - **C++** (.cpp)
@@ -107,50 +106,59 @@ Once installed, use your configured keybindings:
 ### Examples
 
 **Navigate object properties:**
+
 ```typescript
 const obj = {
-  foo: 1,     // <C-j> →
-  bar: 2,     // <C-j> →
-  baz: 3,     // cursor here
-}
+  foo: 1, // <C-j> →
+  bar: 2, // <C-j> →
+  baz: 3, // cursor here
+};
 ```
 
 **Navigate array elements:**
+
 ```typescript
 const arr = [
-  element1,   // <C-j> →
-  element2,   // <C-j> →
-  element3,   // cursor here
-]
+  element1, // <C-j> →
+  element2, // <C-j> →
+  element3, // cursor here
+];
 ```
 
 **Navigate statements:**
+
 ```typescript
-const x = 1          // <C-j> →
-const y = 2          // <C-j> →
-return x + y         // cursor here
+const x = 1; // <C-j> →
+const y = 2; // <C-j> →
+return x + y; // cursor here
 ```
 
 **Navigate method chains:**
+
 ```typescript
 obj
-  .foo()     // <C-j> →
-  .bar()     // <C-j> →
-  .baz()     // cursor here
+  .foo() // <C-j> →
+  .bar() // <C-j> →
+  .baz(); // cursor here
 ```
 
 **Navigate if-else chains:**
+
 ```typescript
-if (condition1) {    // <C-j> →
+if (condition1) {
+  // <C-j> →
   // ...
-} else if (condition2) {   // <C-j> →
+} else if (condition2) {
+  // <C-j> →
   // ...
-} else {             // cursor here
+} else {
+  // cursor here
   // ...
 }
 ```
 
 **Navigate JSX elements:**
+
 ```tsx
 <>
   <Header />         // <C-j> →
@@ -167,13 +175,13 @@ The `setup()` function accepts the following options:
 require("sibling_jump").setup({
   -- Key to jump to next sibling (default: "<C-j>")
   next_key = "<C-j>",
-  
+
   -- Key to jump to previous sibling (default: "<C-k>")
   prev_key = "<C-k>",
-  
+
   -- Whether to center screen after each jump (default: false)
   center_on_jump = false,
-  
+
   -- Optional: Restrict keymaps to specific filetypes (default: nil = global keymaps)
   -- When set, creates buffer-local keymaps only for these filetypes
   filetypes = { "typescript", "javascript", "typescriptreact", "javascriptreact" },
@@ -200,6 +208,7 @@ To avoid keymap conflicts and improve performance, restrict the plugin to TS/JS 
 ```
 
 This configuration:
+
 - Lazy loads the plugin only when opening TS/JS files (`ft` parameter)
 - Creates buffer-local keymaps only for TS/JS files (`filetypes` option)
 - Keymaps won't interfere with other filetypes
@@ -216,11 +225,13 @@ You can manually enable/disable sibling-jump for any buffer using these commands
 ```
 
 **Use cases:**
+
 - Testing the plugin in non-TS/JS files (Python, Lua, etc.)
 - Temporarily enabling for a specific file without changing config
 - Quick experiments with the plugin in different languages
 
 **Example:**
+
 ```vim
 " Open a Python file
 :e script.py
@@ -239,10 +250,12 @@ You can manually enable/disable sibling-jump for any buffer using these commands
 ## Language Support
 
 **Primary support:**
+
 - TypeScript / JavaScript
 - TSX / JSX
 
 **Partial support:**
+
 - Python
 - Lua
 - Other languages with Tree-sitter parsers (may work, but not extensively tested)
@@ -252,6 +265,7 @@ You can manually enable/disable sibling-jump for any buffer using these commands
 sibling-jump uses Neovim's Tree-sitter integration to understand your code's structure. Instead of jumping by lines or words, it jumps between meaningful syntactic units at the same nesting level.
 
 When you trigger a jump:
+
 1. It finds the Tree-sitter node at your cursor
 2. Identifies the appropriate "navigation context" (e.g., are you in an object, array, statement block?)
 3. Finds the next/previous sibling node in that context
@@ -259,9 +273,10 @@ When you trigger a jump:
 
 ## Testing
 
-The plugin includes a comprehensive test suite with 86 tests covering all supported navigation scenarios.
+The plugin includes a comprehensive test suite with tests covering all supported navigation scenarios.
 
 **Run tests:**
+
 ```bash
 cd /path/to/sibling-jump.nvim
 bash tests/test_runner.sh
