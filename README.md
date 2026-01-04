@@ -403,9 +403,17 @@ All tests pass with Tree-sitter support for TypeScript/JavaScript/JSX/TSX.
 
 sibling-jump also has a **block-loop** feature that cycles through a construct's boundaries (if → else if → else → closing brace). In visual mode, it selects the entire block - useful for quickly selecting an if-else chain, function, or declaration for deletion/yanking.
 
-## Similar Plugins
+## Alternatives
 
-For more Tree-sitter-based motion plugins, see [awesome-neovim#motion](https://github.com/rockerBOO/awesome-neovim/?tab=readme-ov-file#motion).
+- **[syntax-tree-surfer](https://github.com/ziontee113/syntax-tree-surfer)** - Publicly archived. Had visual selection and swap features that inspired many Tree-sitter navigation plugins.
+
+- **[nvim-treehopper](https://github.com/mfussenegger/nvim-treehopper)** - Leap-like approach with label-based jumps to annotated nodes, rather than direct next/prev movements.
+
+- **[tree-climber.nvim](https://github.com/drybalka/tree-climber.nvim)** - Fine-grained AST node navigation. Gives more literal syntax tree access vs sibling-jump's context-aware approach.
+
+- **[nvim-treesitter-textobjects](https://github.com/nvim-treesitter/nvim-treesitter-textobjects)** - Node-type-specific movements and swaps. sibling-jump is node-type agnostic.
+
+For more Tree-sitter motion plugins, see [awesome-neovim#motion](https://github.com/rockerBOO/awesome-neovim/?tab=readme-ov-file#motion).
 
 ## Contributing
 
