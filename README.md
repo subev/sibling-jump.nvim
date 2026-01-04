@@ -7,6 +7,8 @@ https://github.com/user-attachments/assets/62c59d9a-8593-49b2-b124-1e547c2853cd
 ## Features
 
 - **Context-aware navigation**: Jumps between meaningful code units (statements, properties, array elements, etc.)
+- **Block-loop** (separate keybinding): Cycle through a block's structural boundaries (start → branches → end → back to start)
+- **Visual mode block selection**: Select entire blocks with block-loop in visual mode
 - **Multi-language support**: Works with TypeScript, JavaScript, JSX, TSX, Lua, Java, C, C#, Python, and more
 - **Smart boundary detection**: Prevents navigation from jumping out of context
 - **Method chain navigation**: Seamlessly navigate through method chains like `obj.foo().bar().baz()`
@@ -14,8 +16,11 @@ https://github.com/user-attachments/assets/62c59d9a-8593-49b2-b124-1e547c2853cd
 - **JSX/TSX support**: Navigate between JSX elements and attributes
 - **Count support**: Use `3<C-j>` to jump 3 siblings forward
 
-## Supported Navigation Contexts
+## Sibling Navigation
 
+Jump between nodes at the same nesting level. When your cursor is on a statement, property, or element, pressing the navigation key moves you to the next/previous sibling.
+
+**Supported contexts:**
 - Statements (variable declarations, if/for/while, return, etc.)
 - Object properties and type properties
 - Array elements
@@ -27,6 +32,19 @@ https://github.com/user-attachments/assets/62c59d9a-8593-49b2-b124-1e547c2853cd
 - Generic type parameters
 - Union type members
 - And more!
+
+## Block-Loop (Optional Keybinding)
+
+A complementary feature with its own keybinding. When triggered, it cycles through a block's structural boundaries instead of jumping to siblings.
+
+**Supported constructs:**
+- `const`/`let`/`var` declarations → cycles between keyword and closing `}`/`)`
+- `if`/`else if`/`else` blocks → cycles through all branches and closing `}`
+- `for`/`while` loops → cycles between keyword and closing `}`
+- `switch` statements → cycles through `switch`, each `case`/`default`, and closing `}`
+- `function` declarations → cycles between keyword and closing `}`
+- `type`/`interface` declarations → cycles between keyword and closing `}`
+- Method chains → cycles between each method in the chain
 
 ## Supported Languages
 
@@ -59,9 +77,10 @@ The plugin should work with most languages out of the box. If you encounter issu
   "subev/sibling-jump.nvim",
   config = function()
     require("sibling_jump").setup({
-      next_key = "<C-j>",      -- Jump to next sibling (default)
-      prev_key = "<C-k>",      -- Jump to previous sibling (default)
-      center_on_jump = false,  -- Center screen after jump (default: false)
+      next_key = "<C-j>",        -- Jump to next sibling (default)
+      prev_key = "<C-k>",        -- Jump to previous sibling (default)
+      block_loop_key = "<C-l>",  -- Cycle through block boundaries (optional)
+      center_on_jump = false,    -- Center screen after jump (default: false)
     })
   end,
 }
@@ -76,6 +95,7 @@ use {
     require("sibling_jump").setup({
       next_key = "<C-j>",
       prev_key = "<C-k>",
+      block_loop_key = "<C-l>",  -- optional
     })
   end,
 }
@@ -91,6 +111,7 @@ lua << EOF
 require("sibling_jump").setup({
   next_key = "<C-j>",
   prev_key = "<C-k>",
+  block_loop_key = "<C-l>",  -- optional
 })
 EOF
 ```
@@ -102,6 +123,8 @@ Once installed, use your configured keybindings:
 - `<C-j>` - Jump to next sibling
 - `<C-k>` - Jump to previous sibling
 - `3<C-j>` - Jump 3 siblings forward (works with any count)
+- `<C-l>` - Cycle through block boundaries (if `block_loop_key` configured)
+- `V` then `<C-l>` - Select entire block in visual mode
 
 ### Examples
 
@@ -167,6 +190,61 @@ if (condition1) {
 </>
 ```
 
+### Block-Loop Examples
+
+**Cycle through a const declaration:**
+
+```typescript
+const config = {     // cursor on "const", <C-j> →
+  foo: 1,
+  bar: 2,
+};                   // ← lands here, <C-j> cycles back to "const"
+```
+
+**Cycle through if-else blocks:**
+
+```typescript
+if (condition1) {    // cursor on "if", <C-j> →
+  // ...
+} else if (cond2) {  // ← <C-j> →
+  // ...
+} else {             // ← <C-j> →
+  // ...
+}                    // ← lands here, <C-j> cycles back to "if"
+```
+
+**Cycle through a switch statement:**
+
+```typescript
+switch (value) {     // cursor on "switch", <C-j> →
+  case 1:            // ← <C-j> →
+    break;
+  case 2:            // ← <C-j> →
+    break;
+  default:           // ← <C-j> →
+    break;
+}                    // ← lands here, <C-j> cycles back to "switch"
+```
+
+**Cycle through a for loop:**
+
+```typescript
+for (let i = 0; i < 10; i++) {  // cursor on "for", <C-j> →
+  console.log(i);
+}                                // ← lands here, <C-j> cycles back
+```
+
+**Visual mode block selection:**
+
+When you trigger navigation in visual mode while on a block keyword, it selects the entire block:
+
+```typescript
+const data = {    // V then <C-j> selects entire declaration
+  name: "test",
+  value: 42,
+};                // ← selection extends to here
+```
+
 ## Configuration
 
 The `setup()` function accepts the following options:
@@ -179,8 +257,15 @@ require("sibling_jump").setup({
   -- Key to jump to previous sibling (default: "<C-k>")
   prev_key = "<C-k>",
 
+  -- Key to cycle through block boundaries (default: nil = disabled)
+  -- When set, enables block-loop feature in both normal and visual modes
+  block_loop_key = "<C-l>",
+
   -- Whether to center screen after each jump (default: false)
   center_on_jump = false,
+
+  -- Separate center setting for block-loop (default: uses center_on_jump value)
+  block_loop_center_on_jump = false,
 
   -- Optional: Restrict keymaps to specific filetypes (default: nil = global keymaps)
   -- When set, creates buffer-local keymaps only for these filetypes
@@ -262,14 +347,18 @@ You can manually enable/disable sibling-jump for any buffer using these commands
 
 ## How It Works
 
-sibling-jump uses Neovim's Tree-sitter integration to understand your code's structure. Instead of jumping by lines or words, it jumps between meaningful syntactic units at the same nesting level.
+sibling-jump uses Neovim's Tree-sitter integration to understand your code's structure. Instead of jumping by lines or words, it jumps between meaningful syntactic units.
 
-When you trigger a jump:
-
-1. It finds the Tree-sitter node at your cursor
+**Sibling Navigation** (`<C-j>`/`<C-k>`):
+1. Finds the Tree-sitter node at your cursor
 2. Identifies the appropriate "navigation context" (e.g., are you in an object, array, statement block?)
 3. Finds the next/previous sibling node in that context
 4. Jumps to it, staying within the same level of abstraction
+
+**Block-Loop** (`<C-l>` if configured):
+1. Detects the block construct you're on (`const`, `if`, `for`, `switch`, etc.)
+2. Collects all structural boundary positions (start, branches, end)
+3. Cycles through them in order, wrapping from end back to start
 
 ## Testing
 
