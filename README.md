@@ -21,6 +21,7 @@ https://github.com/user-attachments/assets/62c59d9a-8593-49b2-b124-1e547c2853cd
 Jump between nodes at the same nesting level. When your cursor is on a statement, property, or element, pressing the navigation key moves you to the next/previous sibling.
 
 **Supported contexts:**
+
 - Statements (variable declarations, if/for/while, return, etc.)
 - Object properties and type properties
 - Array elements
@@ -40,6 +41,7 @@ A complementary feature with its own keybinding. When triggered, it cycles throu
 https://github.com/user-attachments/assets/de9d8239-0e4e-4a39-8f33-0b77bca87876
 
 **Supported constructs:**
+
 - `const`/`let`/`var` declarations → cycles between keyword and closing `}`/`)`
 - `if`/`else if`/`else` blocks → cycles through all branches and closing `}`
 - `for`/`while` loops → cycles between keyword and closing `}`
@@ -197,43 +199,50 @@ if (condition1) {
 **Cycle through a const declaration:**
 
 ```typescript
-const config = {     // cursor on "const", <C-j> →
+const config = {
+  // cursor on "const", <C-j> →
   foo: 1,
   bar: 2,
-};                   // ← lands here, <C-j> cycles back to "const"
+}; // ← lands here, <C-j> cycles back to "const"
 ```
 
 **Cycle through if-else blocks:**
 
 ```typescript
-if (condition1) {    // cursor on "if", <C-j> →
+if (condition1) {
+  // cursor on "if", <C-j> →
   // ...
-} else if (cond2) {  // ← <C-j> →
+} else if (cond2) {
+  // ← <C-j> →
   // ...
-} else {             // ← <C-j> →
+} else {
+  // ← <C-j> →
   // ...
-}                    // ← lands here, <C-j> cycles back to "if"
+} // ← lands here, <C-j> cycles back to "if"
 ```
 
 **Cycle through a switch statement:**
 
 ```typescript
-switch (value) {     // cursor on "switch", <C-j> →
-  case 1:            // ← <C-j> →
+switch (
+  value // cursor on "switch", <C-j> →
+) {
+  case 1: // ← <C-j> →
     break;
-  case 2:            // ← <C-j> →
+  case 2: // ← <C-j> →
     break;
-  default:           // ← <C-j> →
+  default: // ← <C-j> →
     break;
-}                    // ← lands here, <C-j> cycles back to "switch"
+} // ← lands here, <C-j> cycles back to "switch"
 ```
 
 **Cycle through a for loop:**
 
 ```typescript
-for (let i = 0; i < 10; i++) {  // cursor on "for", <C-j> →
+for (let i = 0; i < 10; i++) {
+  // cursor on "for", <C-j> →
   console.log(i);
-}                                // ← lands here, <C-j> cycles back
+} // ← lands here, <C-j> cycles back
 ```
 
 **Visual mode block selection:**
@@ -241,10 +250,11 @@ for (let i = 0; i < 10; i++) {  // cursor on "for", <C-j> →
 When you trigger navigation in visual mode while on a block keyword, it selects the entire block:
 
 ```typescript
-const data = {    // V then <C-j> selects entire declaration
+const data = {
+  // V then <C-j> selects entire declaration
   name: "test",
   value: 42,
-};                // ← selection extends to here
+}; // ← selection extends to here
 ```
 
 ## Configuration
@@ -352,12 +362,14 @@ You can manually enable/disable sibling-jump for any buffer using these commands
 sibling-jump uses Neovim's Tree-sitter integration to understand your code's structure. Instead of jumping by lines or words, it jumps between meaningful syntactic units.
 
 **Sibling Navigation** (`<C-j>`/`<C-k>`):
+
 1. Finds the Tree-sitter node at your cursor
 2. Identifies the appropriate "navigation context" (e.g., are you in an object, array, statement block?)
 3. Finds the next/previous sibling node in that context
 4. Jumps to it, staying within the same level of abstraction
 
 **Block-Loop** (`<C-l>` if configured):
+
 1. Detects the block construct you're on (`const`, `if`, `for`, `switch`, etc.)
 2. Collects all structural boundary positions (start, branches, end)
 3. Cycles through them in order, wrapping from end back to start
@@ -374,6 +386,22 @@ bash tests/test_runner.sh
 ```
 
 All tests pass with Tree-sitter support for TypeScript/JavaScript/JSX/TSX.
+
+## FAQ
+
+### How is this different from treewalker.nvim?
+
+**sibling-jump** stays within your current context. When you're in an object, it jumps between properties. When you're in an array, it jumps between elements. When you're in an if-else chain, it treats the entire chain as one navigable unit.
+
+**treewalker.nvim** is great for full AST traversal (4 directions, moving between nesting levels), but sibling-jump focuses on "just working" horizontally - staying at the same level of abstraction without accidentally jumping out of your current block.
+
+<!-- TODO: Add comparison image/gif here -->
+
+sibling-jump also has a **block-loop** feature that cycles through a construct's boundaries (if → else if → else → closing brace). In visual mode, it selects the entire block - useful for quickly selecting an if-else chain, function, or declaration for deletion/yanking.
+
+## Similar Plugins
+
+For more Tree-sitter-based motion plugins, see [awesome-neovim#motion](https://github.com/rockerBOO/awesome-neovim/?tab=readme-ov-file#motion).
 
 ## Contributing
 
