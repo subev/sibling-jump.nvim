@@ -391,11 +391,11 @@ All tests pass with Tree-sitter support for TypeScript/JavaScript/JSX/TSX.
 
 ### How is this different from treewalker.nvim?
 
-**sibling-jump** stays within your current context. When you're in an object, it jumps between properties. When you're in an array, it jumps between elements. When you're in an if-else chain, it treats the entire chain as one navigable unit.
+**sibling-jump** stays within your current context. When you are in a function you are jumping only inside of its top level statements/expressions. when you're in an object, it jumps between properties. When you're in an array, it jumps between elements. When you're in an if-else chain, it treats the entire chain as one navigable unit.
 
-**treewalker.nvim** is great for full AST traversal (4 directions, moving between nesting levels), but sibling-jump focuses on "just working" horizontally - staying at the same level of abstraction without accidentally jumping out of your current block.
+**treewalker.nvim** is great for full AST traversal (4 directions, moving between nesting levels), but sibling-jump focuses on "just working" horizontally - staying at the same level of abstraction without accidentally jumping out of your current block. The following shouldn't be possible with sibling-jump.nvim
 
-<!-- TODO: Add comparison image/gif here -->
+<img width="1496" height="955" alt="Screenshot 2026-01-04 at 15 45 13" src="https://github.com/user-attachments/assets/e5d785d7-1840-4c15-8be6-0a2424b76528" />
 
 sibling-jump also has a **block-loop** feature that cycles through a construct's boundaries (if → else if → else → closing brace). In visual mode, it selects the entire block - useful for quickly selecting an if-else chain, function, or declaration for deletion/yanking.
 
