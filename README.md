@@ -37,6 +37,8 @@ Jump between nodes at the same nesting level. When your cursor is on a statement
 
 A complementary feature with its own keybinding. When triggered, it cycles through a block's structural boundaries instead of jumping to siblings.
 
+https://github.com/user-attachments/assets/de9d8239-0e4e-4a39-8f33-0b77bca87876
+
 **Supported constructs:**
 - `const`/`let`/`var` declarations → cycles between keyword and closing `}`/`)`
 - `if`/`else if`/`else` blocks → cycles through all branches and closing `}`
