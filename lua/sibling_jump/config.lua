@@ -85,7 +85,12 @@ M.MEANINGFUL_TYPES = {
   "function_definition",
   "class_definition",
   "decorated_definition",
-  "assignment",
+  -- Note: Python 'assignment' is always wrapped in 'expression_statement', so not listed here
+  "pass_statement",
+  "import_from_statement",
+  "with_statement",
+  "assert_statement",
+  "raise_statement",
 
   -- === Lua ===
   "assignment_statement",

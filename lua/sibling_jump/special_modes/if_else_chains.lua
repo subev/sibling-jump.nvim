@@ -3,41 +3,55 @@
 
 local M = {}
 
--- Collect all else clauses in an if-else-if chain
--- Returns: list of else_clause nodes (in order from first to last)
--- Note: This is for JavaScript/TypeScript only. Lua uses a different approach.
+-- Collect all elif/else clauses in an if-else chain
+-- Returns: list of clause nodes (in order from first to last)
+-- Works for:
+--   - JavaScript/TypeScript: else_clause with nested if_statement
+--   - Lua: elseif_statement, else_statement as direct children
+--   - Python: elif_clause, else_clause as direct children
 local function collect_else_clauses(if_node)
   local clauses = {}
   local current_if = if_node
 
   while current_if and current_if:type() == "if_statement" do
-    -- Look for else_clause in this if_statement
-    local found_else = false
+    local found_continuation = false
+    
     for i = 0, current_if:child_count() - 1 do
       local child = current_if:child(i)
-      if child:type() == "else_clause" then
-        found_else = true
+      local child_type = child:type()
+      
+      -- Handle Python's elif_clause (direct child of if_statement)
+      if child_type == "elif_clause" then
+        found_continuation = true
+        table.insert(clauses, child)
+        -- Continue loop to find more elif/else clauses
+        
+      -- Handle else_clause (Python and JS/TS)
+      elseif child_type == "else_clause" then
+        found_continuation = true
         table.insert(clauses, child)
 
-        -- Check if this else clause contains another if_statement (else if)
-        -- or a statement_block (final else)
+        -- Check if this else clause contains another if_statement (JS/TS else if)
+        local has_nested_if = false
         for j = 0, child:child_count() - 1 do
           local grandchild = child:child(j)
           if grandchild:type() == "if_statement" then
-            -- This is an else if, continue with the nested if_statement
+            -- JS/TS: else if is a nested if_statement inside else_clause
             current_if = grandchild
-            break
-          elseif grandchild:type() == "statement_block" then
-            -- This is the final else, no more to traverse
-            current_if = nil
+            has_nested_if = true
             break
           end
         end
-        break
+        
+        if not has_nested_if then
+          -- This is a final else (Python or JS/TS), stop here
+          return clauses
+        end
+        break  -- Break inner loop, continue with nested if_statement
       end
     end
 
-    if not found_else then
+    if not found_continuation then
       break
     end
   end
@@ -45,23 +59,36 @@ local function collect_else_clauses(if_node)
   return clauses
 end
 
--- Get position of 'else' keyword within else_clause
--- Returns: row, col (pointing to 'e' of 'else')
-local function get_else_keyword_position(else_clause_node)
-  if not else_clause_node or else_clause_node:type() ~= "else_clause" then
+-- Get position of keyword within a clause (else, elif, etc.)
+-- Returns: row, col (pointing to first char of keyword)
+local function get_else_keyword_position(clause_node)
+  if not clause_node then
+    return nil, nil
+  end
+  
+  local clause_type = clause_node:type()
+  local valid_types = {
+    ["else_clause"] = true,
+    ["elif_clause"] = true,
+    ["elseif_statement"] = true,
+    ["else_statement"] = true,
+  }
+  
+  if not valid_types[clause_type] then
     return nil, nil
   end
 
-  -- Find the 'else' keyword child
-  for i = 0, else_clause_node:child_count() - 1 do
-    local child = else_clause_node:child(i)
-    if child:type() == "else" then
+  -- Find the keyword child (else, elif, elseif)
+  for i = 0, clause_node:child_count() - 1 do
+    local child = clause_node:child(i)
+    local child_type = child:type()
+    if child_type == "else" or child_type == "elif" or child_type == "elseif" then
       return child:start()
     end
   end
 
-  -- Fallback to else_clause start position
-  return else_clause_node:start()
+  -- Fallback to clause start position
+  return clause_node:start()
 end
 
 -- Detect if we're on an if statement with else clauses
@@ -88,6 +115,7 @@ function M.detect(node)
       or meaningful_node:type() == "elseif_statement"
       or meaningful_node:type() == "else_statement"
       or meaningful_node:type() == "else_clause"
+      or meaningful_node:type() == "elif_clause"  -- Python
     
     -- If the meaningful node is NOT an if/else structure, skip detection
     -- This prevents triggering when cursor is on regular statements INSIDE an if/else block
@@ -111,7 +139,7 @@ function M.detect(node)
       local has_else_children = false
       for i = 0, current:child_count() - 1 do
         local child = current:child(i)
-        if child:type() == "elseif_statement" or child:type() == "else_statement" or child:type() == "else_clause" then
+        if child:type() == "elseif_statement" or child:type() == "else_statement" or child:type() == "else_clause" or child:type() == "elif_clause" then
           has_else_children = true
           break
         end
@@ -128,7 +156,7 @@ function M.detect(node)
       
       current = current:parent()
       depth = depth + 1
-    elseif current:type() == "else_clause" or current:type() == "elseif_statement" or current:type() == "else_statement" then
+    elseif current:type() == "else_clause" or current:type() == "elseif_statement" or current:type() == "else_statement" or current:type() == "elif_clause" then
       found_else_clause = current
       -- Continue walking up to find the parent if_statement
       current = current:parent()
@@ -139,7 +167,7 @@ function M.detect(node)
     end
 
     -- Stop if we've gone too far up
-    if current and (current:type() == "statement_block" or current:type() == "program") then
+    if current and (current:type() == "statement_block" or current:type() == "block" or current:type() == "program" or current:type() == "module") then
       break
     end
   end
@@ -166,11 +194,13 @@ function M.detect(node)
   -- Check if this if_statement has else clauses
   local else_clauses = collect_else_clauses(found_if)
   
-  -- For Lua: collect elseif_statement and else_statement directly from if_node children
+  -- For Lua/Python: collect elseif_statement/elif_clause and else_statement/else_clause directly from if_node children
   if #else_clauses == 0 then
     for i = 0, found_if:child_count() - 1 do
       local child = found_if:child(i)
-      if child:type() == "elseif_statement" or child:type() == "else_statement" then
+      local child_type = child:type()
+      if child_type == "elseif_statement" or child_type == "else_statement" 
+         or child_type == "elif_clause" or child_type == "else_clause" then
         table.insert(else_clauses, child)
       end
     end
@@ -241,11 +271,13 @@ end
 function M.navigate(if_node, current_pos, forward, get_sibling_node)
   local else_clauses = collect_else_clauses(if_node)
   
-  -- For Lua: collect elseif_statement and else_statement directly from if_node children
+  -- For Lua/Python: collect elseif_statement/elif_clause and else_statement/else_clause directly from if_node children
   if #else_clauses == 0 then
     for i = 0, if_node:child_count() - 1 do
       local child = if_node:child(i)
-      if child:type() == "elseif_statement" or child:type() == "else_statement" then
+      local child_type = child:type()
+      if child_type == "elseif_statement" or child_type == "else_statement"
+         or child_type == "elif_clause" or child_type == "else_clause" then
         table.insert(else_clauses, child)
       end
     end
@@ -337,11 +369,13 @@ function M.get_entry_point(if_node, forward)
   -- Backward: land on the last else/elseif clause
   local else_clauses = collect_else_clauses(if_node)
   
-  -- For Lua: collect elseif_statement and else_statement directly
+  -- For Lua/Python: collect elseif_statement/elif_clause and else_statement/else_clause directly
   if #else_clauses == 0 then
     for i = 0, if_node:child_count() - 1 do
       local child = if_node:child(i)
-      if child:type() == "elseif_statement" or child:type() == "else_statement" then
+      local child_type = child:type()
+      if child_type == "elseif_statement" or child_type == "else_statement"
+         or child_type == "elif_clause" or child_type == "else_clause" then
         table.insert(else_clauses, child)
       end
     end

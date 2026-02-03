@@ -13,6 +13,7 @@ local node_finder = require("sibling_jump.node_finder")
 local method_chains = require("sibling_jump.special_modes.method_chains")
 local if_else_chains = require("sibling_jump.special_modes.if_else_chains")
 local switch_cases = require("sibling_jump.special_modes.switch_cases")
+local try_except_chains = require("sibling_jump.special_modes.try_except_chains")
 local positioning = require("sibling_jump.positioning")
 local handlers = require("sibling_jump.handlers")
 
@@ -68,6 +69,14 @@ local special_modes = {
     name = "switch_cases",
     detect = switch_cases.detect,
     navigate = switch_cases.navigate,
+    boundary_behavior = "fallthrough",
+  },
+  {
+    name = "try_except_chains",
+    detect = try_except_chains.detect,
+    navigate = function(try_node, current_pos, forward)
+      return try_except_chains.navigate(try_node, current_pos, forward, get_sibling_node)
+    end,
     boundary_behavior = "fallthrough",
   },
 }

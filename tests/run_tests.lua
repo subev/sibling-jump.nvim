@@ -1978,5 +1978,140 @@ test("Lua tables: mixed table navigation (keyed and array)", function()
   assert_eq(41, pos[1], "Should jump from enabled (L40) to 'second' (L41)")
 end)
 
+-- ============================================================================
+-- PYTHON TESTS
+-- ============================================================================
+
+test("Python statements: forward navigation", function()
+  vim.cmd("edit tests/fixtures/python_statements.py")
+  vim.api.nvim_win_set_cursor(0, {5, 4})  -- On 'total = 0'
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(6, pos[1], "Should jump from total (L5) to count (L6)")
+end)
+
+test("Python statements: backward navigation", function()
+  vim.cmd("edit tests/fixtures/python_statements.py")
+  vim.api.nvim_win_set_cursor(0, {6, 4})  -- On 'count = len(items)'
+  
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(5, pos[1], "Should jump from count (L6) to total (L5)")
+end)
+
+test("Python tuple unpacking: navigation", function()
+  vim.cmd("edit tests/fixtures/python_statements.py")
+  vim.api.nvim_win_set_cursor(0, {9, 4})  -- On 'name, version = ...'
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(10, pos[1], "Should jump from name,version (L9) to x,y,z (L10)")
+end)
+
+test("Python for loop: navigation to", function()
+  vim.cmd("edit tests/fixtures/python_statements.py")
+  vim.api.nvim_win_set_cursor(0, {10, 4})  -- On 'x, y, z = ...'
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(13, pos[1], "Should jump to for loop (L13)")
+end)
+
+test("Python if-elif-else: forward through chain", function()
+  vim.cmd("edit tests/fixtures/python_statements.py")
+  vim.api.nvim_win_set_cursor(0, {18, 4})  -- On 'if total > 100'
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(20, pos[1], "Should jump from if (L18) to elif (L20)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(22, pos[1], "Should jump from elif (L20) to else (L22)")
+end)
+
+test("Python if-elif-else: backward through chain", function()
+  vim.cmd("edit tests/fixtures/python_statements.py")
+  vim.api.nvim_win_set_cursor(0, {22, 4})  -- On 'else:'
+  
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(20, pos[1], "Should jump from else (L22) to elif (L20)")
+  
+  sibling_jump.jump_to_sibling({ forward = false })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(18, pos[1], "Should jump from elif (L20) to if (L18)")
+end)
+
+test("Python return statement: navigation", function()
+  vim.cmd("edit tests/fixtures/python_statements.py")
+  vim.api.nvim_win_set_cursor(0, {26, 4})  -- On 'result = {...}'
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(32, pos[1], "Should jump to return statement (L32)")
+end)
+
+test("Python try-except: forward through chain", function()
+  vim.cmd("edit tests/fixtures/python_statements.py")
+  vim.api.nvim_win_set_cursor(0, {42, 4})  -- On 'try:'
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(44, pos[1], "Should jump from try (L42) to first except (L44)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(46, pos[1], "Should jump to second except (L46)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(48, pos[1], "Should jump to finally (L48)")
+end)
+
+test("Python try-except: backward through chain", function()
+  vim.cmd("edit tests/fixtures/python_statements.py")
+  vim.api.nvim_win_set_cursor(0, {48, 4})  -- On 'finally:'
+  
+  sibling_jump.jump_to_sibling({ forward = false })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(46, pos[1], "Should jump from finally (L48) to second except (L46)")
+  
+  sibling_jump.jump_to_sibling({ forward = false })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(44, pos[1], "Should jump to first except (L44)")
+  
+  sibling_jump.jump_to_sibling({ forward = false })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(42, pos[1], "Should jump to try (L42)")
+end)
+
+test("Python with statement: navigation", function()
+  vim.cmd("edit tests/fixtures/python_statements.py")
+  vim.api.nvim_win_set_cursor(0, {55, 4})  -- On 'before = 1'
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(57, pos[1], "Should jump to with statement (L57)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(60, pos[1], "Should jump to after (L60)")
+end)
+
+test("Python functions: top-level navigation", function()
+  vim.cmd("edit tests/fixtures/python_statements.py")
+  vim.api.nvim_win_set_cursor(0, {3, 0})  -- On 'def process_data'
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(35, pos[1], "Should jump to another_function (L35)")
+  
+  sibling_jump.jump_to_sibling({ forward = true })
+  pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(39, pos[1], "Should jump to error_handling (L39)")
+end)
+
 -- Run all tests
 run_tests()

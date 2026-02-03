@@ -649,22 +649,22 @@ test("Block-loop: Lua if-else cycle", function()
   local block_loop = sibling_jump.block_loop()
   vim.cmd("edit lua/sibling_jump/init.lua")
   
-  -- Test on line 106: if ctx2 ~= nil then
-  vim.api.nvim_win_set_cursor(0, {106, 12})  -- On 'if'
+  -- Test on line 115: if ctx2 ~= nil then (was 106 before Python support added 9 lines)
+  vim.api.nvim_win_set_cursor(0, {115, 12})  -- On 'if'
   
   block_loop.jump_to_boundary({ mode = "normal" })
   local pos = vim.api.nvim_win_get_cursor(0)
-  assert_eq(109, pos[1], "Should jump from if (L106) to else (L109)")
+  assert_eq(118, pos[1], "Should jump from if (L115) to else (L118)")
   assert_eq(10, pos[2], "Should be at 'else' keyword")
   
   block_loop.jump_to_boundary({ mode = "normal" })
   pos = vim.api.nvim_win_get_cursor(0)
-  assert_eq(112, pos[1], "Should jump from else (L109) to end (L112)")
+  assert_eq(121, pos[1], "Should jump from else (L118) to end (L121)")
   assert_eq(10, pos[2], "Should be at 'end' keyword")
   
   block_loop.jump_to_boundary({ mode = "normal" })
   pos = vim.api.nvim_win_get_cursor(0)
-  assert_eq(106, pos[1], "Should cycle back to if (L106)")
+  assert_eq(115, pos[1], "Should cycle back to if (L115)")
 end)
 
 test("Block-loop: Lua if-elseif-else full cycle", function()
@@ -1064,19 +1064,19 @@ test("Block-loop: Lua single-line if statement cycle", function()
   local block_loop = sibling_jump.block_loop()
   vim.cmd("edit lua/sibling_jump/init.lua")
   
-  -- Line 54: if not target then return nil end
+  -- Line 55: if not target then return nil end (was 54 before Python support added 1 line at line 16)
   -- Single-line if should cycle between 'if' and 'end'
-  vim.api.nvim_win_set_cursor(0, {54, 6})  -- On 'if' keyword
+  vim.api.nvim_win_set_cursor(0, {55, 6})  -- On 'if' keyword
   
   block_loop.jump_to_boundary({ mode = "normal" })
   local pos = vim.api.nvim_win_get_cursor(0)
-  assert_eq(54, pos[1], "Should stay on same line")
+  assert_eq(55, pos[1], "Should stay on same line")
   assert_eq(36, pos[2], "Should jump to 'end' keyword")
   
   -- Cycle back to 'if'
   block_loop.jump_to_boundary({ mode = "normal" })
   pos = vim.api.nvim_win_get_cursor(0)
-  assert_eq(54, pos[1], "Should stay on same line")
+  assert_eq(55, pos[1], "Should stay on same line")
   assert_eq(6, pos[2], "Should cycle back to 'if' keyword")
 end)
 

@@ -280,7 +280,7 @@ function M.get_node_at_cursor(bufnr)
         while test_node and test_node ~= check_node do
           if is_meaningful_node(test_node) then
             local test_parent = test_node:parent()
-            if test_parent and test_parent:type() == "statement_block" then
+            if test_parent and (test_parent:type() == "statement_block" or test_parent:type() == "block") then
               -- Count meaningful children in the statement block
               local meaningful_count = 0
               for child in test_parent:iter_children() do
