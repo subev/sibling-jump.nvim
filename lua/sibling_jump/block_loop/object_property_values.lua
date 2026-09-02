@@ -2,6 +2,8 @@
 -- Handles: { propName: value.method().chain() }
 -- When cursor is on property name, cycles between name and closing of value
 
+local utils = require("sibling_jump.block_loop.utils")
+
 local M = {}
 
 -- Detect if cursor is on or inside an object property whose value is a call expression
@@ -141,20 +143,13 @@ end
 
 -- Build context with positions
 function M.build_context(prop_name_node, value_node)
-  -- Get property name position
   local name_row, name_col = prop_name_node:start()
-  
-  -- Get value end position (closing paren)
-  local _, _, end_row, end_col = value_node:range()
-  
-  -- Adjust end_col to be inside the closing paren
-  local closing_col = end_col > 0 and (end_col - 1) or 0
-  
+
   return {
     node = value_node,
     positions = {
-      { row = name_row + 1, col = name_col },      -- Property name (1-indexed)
-      { row = end_row + 1, col = closing_col },    -- Closing paren of value (1-indexed)
+      { row = name_row + 1, col = name_col }, -- Property name (1-indexed)
+      utils.closing_position(value_node), -- Closing paren of value
     },
     current_index = nil,
   }

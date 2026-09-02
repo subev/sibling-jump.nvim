@@ -111,12 +111,7 @@ function M.build_context(if_node)
   end
   
   -- Last position: closing bracket of final block
-  local closing_row, closing_col = M.find_closing_bracket(if_node)
-  table.insert(positions, {
-    row = closing_row + 1,
-    col = closing_col,
-    type = "closing_bracket",
-  })
+  table.insert(positions, M.find_closing_bracket(if_node))
   
   return {
     positions = positions,
@@ -187,17 +182,14 @@ function M.collect_else_clauses(if_node)
   return positions
 end
 
--- Find the closing bracket of the final block
+-- Find the closing bracket position of the final block
 -- Handles both TypeScript/JavaScript (}) and Lua (end)
 function M.find_closing_bracket(if_node)
   -- For Lua: look for 'end' keyword child
-  for i = 0, if_node:child_count() - 1 do
-    local child = if_node:child(i)
-    if child:type() == "end" then
-      -- Found Lua 'end' keyword
-      local end_row, end_col = child:start()
-      return end_row, end_col
-    end
+  local end_keyword = utils.find_child_by_type(if_node, "end")
+  if end_keyword then
+    local end_row, end_col = end_keyword:start()
+    return { row = end_row + 1, col = end_col, type = "closing_bracket" }
   end
   
   -- For TypeScript/JavaScript: find the last statement_block or else_clause
@@ -211,8 +203,7 @@ function M.find_closing_bracket(if_node)
   end
   
   if not last_block then
-    -- Fallback: use if_node's end
-    return if_node:end_()
+    return utils.closing_position(if_node, "closing_bracket")
   end
   
   -- If it's an else_clause, find its statement_block
@@ -231,10 +222,7 @@ function M.find_closing_bracket(if_node)
     end
   end
   
-  local _, _, end_row, end_col = last_block:range()
-  -- end_col is exclusive (points after the last char), so subtract 1 to land ON the closing brace
-  local closing_col = end_col > 0 and (end_col - 1) or 0
-  return end_row, closing_col
+  return utils.closing_position(last_block, "closing_bracket")
 end
 
 -- Navigate to next position in cycle

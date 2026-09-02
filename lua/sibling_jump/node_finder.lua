@@ -1,442 +1,343 @@
 -- Node finder module for sibling-jump.nvim
--- Handles finding the appropriate navigation node at cursor position
+-- Decides which node the cursor line stands for and which nodes it can jump between.
+--
+-- Grammar-agnostic: units are found by tree shape and position, never by node-type names.
+--   1. Members of a list (a parent with `,`/`|` separators): navigate the list.
+--   2. Otherwise the innermost node starting on the cursor line that has peers: children of its parent
+--      at the same column (statements in a body, class members, switch entries), or for a line of a
+--      chained expression, the chain's lines plus the chain's own statement peers.
+--      A lone statement in a block has no peers, so navigation stays put.
 
-local config = require("sibling_jump.config")
 local utils = require("sibling_jump.utils")
 
 local M = {}
 
--- Alias utility functions for convenience
-local is_comment_node = utils.is_comment_node
-local is_skippable_node = utils.is_skippable_node
-local is_meaningful_node = utils.is_meaningful_node
+local LIST_SEPARATORS = { [","] = true, ["|"] = true }
 
--- Get the node at cursor position
+local function is_separator(node)
+  return node ~= nil and not node:named() and LIST_SEPARATORS[node:type()] == true
+end
+
+local function is_list_like(parent)
+  for child in parent:iter_children() do
+    if is_separator(child) then
+      return true
+    end
+  end
+  return false
+end
+
+local function same_start(a, b)
+  local ar, ac = a:start()
+  local br, bc = b:start()
+  return ar == br and ac == bc
+end
+
+local function navigable_children(parent)
+  local out = {}
+  for child in parent:iter_children() do
+    if child:named() and not utils.is_skippable_node(child) then
+      table.insert(out, child)
+    end
+  end
+  return out
+end
+
+-- Left-recursive lists (A | B | C parse as ((A | B) | C)) share their start; use the outermost one
+local function outermost_list(list)
+  while list:parent() and list:parent():type() == list:type() and is_list_like(list:parent())
+    and same_start(list, list:parent()) do
+    list = list:parent()
+  end
+  return list
+end
+
+-- Members of a list: named children next to a separator, nested same-type lists flattened
+local function list_members(list, out)
+  out = out or {}
+  for child in list:iter_children() do
+    if child:named() and not utils.is_skippable_node(child) then
+      if child:type() == list:type() and is_list_like(child) and same_start(child, list) then
+        list_members(child, out)
+      elseif is_separator(child:prev_sibling()) or is_separator(child:next_sibling()) then
+        table.insert(out, child)
+      end
+    end
+  end
+  return out
+end
+
+local is_line_leading = utils.is_line_leading
+
+local function start_row(node)
+  return (node:start())
+end
+
+-- Children of `parent` at the candidate's column that share its group. A line-leading token at a
+-- smaller column (`}` before `else`) closes a group, so the two bodies of an if never count as peers.
+-- Children on the parent's own first row are its header (a function's name, a call's callee) and are
+-- excluded unless they start exactly where the parent starts, or the candidate is on that row.
+local function statement_peers(candidate, parent)
+  local cand_row, cand_col = candidate:start()
+  local parent_row = parent:start()
+  -- A node on its parent's first row that is not the parent's start is part of the header
+  -- (`def name`, `<Tag`): whatever sits below at the same column is the body, not a peer
+  if cand_row == parent_row and not same_start(candidate, parent) then
+    return {}
+  end
+  local groups, group = {}, {}
+  for child in parent:iter_children() do
+    local row, col = child:start()
+    if row ~= parent_row and col < cand_col and is_line_leading(child) and not utils.is_comment_node(child) then
+      table.insert(groups, group)
+      group = {}
+    elseif child:named() and not utils.is_skippable_node(child) and col == cand_col then
+      local header = row == parent_row and cand_row ~= parent_row and not same_start(child, parent)
+      if not header then
+        table.insert(group, child)
+      end
+    end
+  end
+  table.insert(groups, group)
+  for _, g in ipairs(groups) do
+    for _, member in ipairs(g) do
+      if start_row(member) == cand_row then
+        return g
+      end
+    end
+  end
+  return {}
+end
+
+-- A left-recursive chain (`a.b().c()` parses as call(nav(call(nav(a))))) is a run of nodes sharing one
+-- start position whose types repeat. Returns that run, outermost first, or nil when `parent` is not
+-- part of one. A body that merely starts at its first statement has no repeated types and is not a chain.
+local function chain_column(parent)
+  local run = {}
+  local up = parent
+  while up:parent() and same_start(up:parent(), up) do
+    up = up:parent()
+  end
+  local cur = up
+  while cur do
+    table.insert(run, cur)
+    local first = cur:named_child(0)
+    cur = (first and same_start(first, cur)) and first or nil
+  end
+  local counts = {}
+  for _, node in ipairs(run) do
+    counts[node:type()] = (counts[node:type()] or 0) + 1
+  end
+  -- Trim the unique-typed ends: the body above the chain, the identifier it starts from
+  local first, last = 1, #run
+  while first <= last and counts[run[first]:type()] < 2 do
+    first = first + 1
+  end
+  while last >= first and counts[run[last]:type()] < 2 do
+    last = last - 1
+  end
+  local column, has_parent = {}, false
+  for i = first, last do
+    table.insert(column, run[i])
+    has_parent = has_parent or run[i]:id() == parent:id()
+  end
+  if #column < 2 or not has_parent then
+    return nil
+  end
+  return column
+end
+
+local function sorted_by_row(members)
+  table.sort(members, function(a, b)
+    return start_row(a) < start_row(b)
+  end)
+  return members
+end
+
+-- Nodes starting on `row`, from `node` outward
+local function nodes_on_row(node, row)
+  local list = {}
+  local cur = node
+  while cur and cur:parent() and start_row(cur) == row do
+    table.insert(list, cur)
+    cur = cur:parent()
+  end
+  return list
+end
+
+-- What the candidate navigates among: its statement peers, or for a line of a chain, the chain's
+-- line-leading pieces merged with the statement peers of the statement the chain belongs to.
+local function peers(candidate, parent)
+  local column = chain_column(parent)
+  if not column then
+    return statement_peers(candidate, parent)
+  end
+  local rows, members = {}, {}
+  local function add(node)
+    local row = start_row(node)
+    if not rows[row] then
+      rows[row] = true
+      table.insert(members, node)
+    end
+  end
+  local root = column[1]
+  for _, owner in ipairs(nodes_on_row(root, start_row(root))) do
+    local statement_level = statement_peers(owner, owner:parent())
+    if #statement_level > 1 then
+      for _, peer in ipairs(statement_level) do
+        add(peer)
+      end
+      break
+    end
+  end
+  add(root)
+  for _, node in ipairs(column) do
+    for _, child in ipairs(navigable_children(node)) do
+      if is_line_leading(child) then
+        add(child)
+      end
+    end
+  end
+  return sorted_by_row(members)
+end
+
+-- The outermost node that ends on this row and began above it: what a lone closing token stands for
+local function closed_node(node, row)
+  local found = nil
+  local cur = node:parent()
+  while cur and cur:parent() do
+    local sr, _, er = cur:range()
+    if er == row and sr < row then
+      found = cur
+    elseif er > row then
+      break
+    end
+    cur = cur:parent()
+  end
+  return found
+end
+
+local function has_named(nodes)
+  for _, n in ipairs(nodes) do
+    if n:named() then
+      return true
+    end
+  end
+  return false
+end
+
+-- Returns: unit node, its parent, and the list of nodes it navigates among
+local function find_unit(node, row)
+  -- On a separator, navigate as the member beside it on this line
+  if is_separator(node) then
+    local following, previous = node:next_named_sibling(), node:prev_named_sibling()
+    if following and start_row(following) == row then
+      node = following
+    elseif previous and start_row(previous) == row then
+      node = previous
+    end
+  end
+
+  local candidates = nodes_on_row(node, row)
+  if not has_named(candidates) then
+    -- A lone token (`}`, `?`) stands for what follows it on the line, else for the node it closes
+    local following = node:next_named_sibling()
+    if following and start_row(following) == row then
+      candidates = nodes_on_row(following, row)
+    else
+      local closed = closed_node(node, row)
+      candidates = closed and { closed } or {}
+    end
+  end
+
+  for _, c in ipairs(candidates) do
+    local p = c:parent()
+    if c:named() and is_list_like(p) and (is_separator(c:prev_sibling()) or is_separator(c:next_sibling())) then
+      local list = outermost_list(p)
+      local members = list_members(list)
+      if #members > 1 then
+        return c, list, members
+      end
+    end
+  end
+
+  -- Innermost first: a statement's own peers beat the two bodies of the `if` that contains it
+  for _, c in ipairs(candidates) do
+    if c:named() then
+      local members = peers(c, c:parent())
+      if #members > 1 then
+        return c, c:parent(), members
+      end
+    end
+  end
+
+  return nil, "No navigable unit on this line"
+end
+
+-- Line-leading pieces of the chained expression `node` is, first to last; empty when it is not one
+function M.chain_lines(node)
+  local first = node:named_child(0)
+  local column = (first and same_start(first, node)) and chain_column(first) or nil
+  if not column or column[1]:id() ~= node:id() then
+    return {}
+  end
+  local rows, lines = {}, {}
+  for _, piece in ipairs(column) do
+    for _, child in ipairs(navigable_children(piece)) do
+      if is_line_leading(child) and not rows[start_row(child)] then
+        rows[start_row(child)] = true
+        table.insert(lines, child)
+      end
+    end
+  end
+  return sorted_by_row(lines)
+end
+
+-- On a blank line or a comment: offer the nearest navigable children of the enclosing container
+local function marker(container, row, flag)
+  local before, after
+  for _, child in ipairs(navigable_children(container)) do
+    local child_row = child:start()
+    if child_row < row then
+      before = child
+    elseif child_row > row and not after then
+      after = child
+    end
+  end
+  if not before and not after then
+    return nil, "Nothing to jump to from here"
+  end
+  return { [flag] = true, closest_before = before, closest_after = after, parent = container }, container
+end
+
+-- Get the navigation unit at the cursor
+-- Returns: node, parent, members  |  marker table, container  |  nil, reason
 function M.get_node_at_cursor(bufnr)
-  -- Get treesitter parser
-  local lang = vim.treesitter.language.get_lang(vim.bo[bufnr].filetype)
-  if not lang then
-    return nil, "No treesitter language found for filetype"
-  end
-
-  local ok, parser = pcall(vim.treesitter.get_parser, bufnr, lang)
-  if not ok or not parser then
-    return nil, "No treesitter parser available"
-  end
-
-  local tree = parser:parse()[1]
-  if not tree then
-    return nil, "Failed to parse buffer"
-  end
-
-  local root = tree:root()
   local cursor = vim.api.nvim_win_get_cursor(0)
-  local row = cursor[1] - 1 -- Convert to 0-indexed
-  local col = cursor[2]
+  local row, col = cursor[1] - 1, cursor[2]
 
-  -- Adjust column if cursor is on leading whitespace
-  -- This ensures we get the correct node (the statement, not its parent)
-  local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
-  local first_nonws_col = vim.fn.match(line, [[\S]])
-  local original_col = col
+  -- In leading whitespace, tree-sitter returns the enclosing block instead of the statement
+  local first_nonws_col = utils.line_start_col(bufnr, row)
   if first_nonws_col >= 0 and col < first_nonws_col then
-    -- Cursor is in leading whitespace, adjust to first non-whitespace
     col = first_nonws_col
-  elseif first_nonws_col < 0 then
-    -- Line is all whitespace/empty, keep original column
-    -- (This will likely trigger the _on_whitespace or _on_comment logic)
   end
 
-  -- Get the smallest node at cursor
-  local node = root:descendant_for_range(row, col, row, col)
+  local node = utils.get_node_at(bufnr, row, col)
   if not node then
     return nil, "No node at cursor"
   end
-
-  -- Special case: if we're on a jsx_opening_element or jsx_closing_element,
-  -- treat the parent jsx_element as the meaningful node
-  if node:type() == "jsx_opening_element" or node:type() == "jsx_closing_element" then
-    local parent = node:parent()
-    if parent and parent:type() == "jsx_element" then
-      return parent, parent:parent()
+  if first_nonws_col < 0 then
+    return marker(node, row, "_on_whitespace")
+  end
+  if utils.is_comment_node(node) then
+    local container = node
+    while container:parent() and utils.is_comment_node(container) do
+      container = container:parent()
     end
+    return marker(container, row, "_on_comment")
   end
 
-  -- Special case: if we're on a container node (like statement_block, object, etc.)
-  -- where cursor is on whitespace/between children, find the closest meaningful child
-  if config.is_container_type(node:type()) then
-    -- Find the closest meaningful child node to the cursor position
-    local closest_before = nil
-    local closest_after = nil
-    local min_dist_before = math.huge
-    local min_dist_after = math.huge
-
-    for child in node:iter_children() do
-      if is_meaningful_node(child) then
-        local child_start_row = child:start()
-
-        if child_start_row < row then
-          -- Child is before cursor
-          local dist = row - child_start_row
-          if dist < min_dist_before then
-            min_dist_before = dist
-            closest_before = child
-          end
-        elseif child_start_row > row then
-          -- Child is after cursor
-          local dist = child_start_row - row
-          if dist < min_dist_after then
-            min_dist_after = dist
-            closest_after = child
-          end
-        else
-          -- Child is on the same line as cursor, use it
-          return child, node
-        end
-      end
-    end
-
-    -- Return a special marker indicating we're on whitespace
-    -- We'll handle this specially in the jump function
-    if closest_before or closest_after then
-      return {
-        _on_whitespace = true,
-        closest_before = closest_before,
-        closest_after = closest_after,
-        parent = node,
-      },
-        node
-    end
-    -- If no meaningful children found, fall through to normal logic
-  end
-
-  -- Check if we're starting on a comment or empty line
-  local started_on_comment = is_comment_node(node)
-  local started_on_empty_line = node and node:type() == "chunk"
-
-  -- Walk up the tree until we find a "meaningful" node that represents
-  -- a complete unit we want to jump between (like a property_signature, statement, etc.)
-  local current = node
-  while current do
-    -- Special case: if we started on a comment/empty line and reached a container,
-    -- stop here and handle in fallback (don't walk up to find meaningful parent)
-    if started_on_comment or started_on_empty_line then
-      local current_type = current:type()
-      local is_container = current_type == "block"
-        or current_type == "statement_block"
-        or current_type == "compound_statement"
-        or current_type == "chunk"
-      if is_container then
-        -- Don't continue walking up - we want to search THIS container's children
-        break
-      end
-    end
-    -- Special case: if current is a type_identifier inside a type_alias_declaration or interface_declaration,
-    -- use the declaration as the navigation unit (not the type_identifier)
-    if current:type() == "type_identifier" then
-      local parent = current:parent()
-      if parent and (parent:type() == "type_alias_declaration" or parent:type() == "interface_declaration") then
-        -- We're the name of a type declaration, use the declaration for navigation
-        return parent, parent:parent()
-      end
-    end
-
-    -- Special case: if current is an identifier inside a JSX element,
-    -- walk up to find the jsx_self_closing_element or jsx_element
-    if current:type() == "identifier" then
-      local parent = current:parent()
-
-      -- JSX tag name - walk up to find the jsx element
-      if parent and (parent:type() == "jsx_self_closing_element" or parent:type() == "jsx_opening_element") then
-        -- We're a JSX tag name, walk up to find the jsx element
-        if parent:type() == "jsx_opening_element" then
-          -- jsx_opening_element's parent is jsx_element
-          local grandparent = parent:parent()
-          if grandparent and grandparent:type() == "jsx_element" then
-            local great_grandparent = grandparent:parent()
-            if great_grandparent and great_grandparent:type() == "jsx_element" then
-              -- We're in a JSX fragment, navigate between children
-              return grandparent, great_grandparent
-            end
-          end
-        elseif parent:type() == "jsx_self_closing_element" then
-          -- jsx_self_closing_element might be directly in a fragment
-          local grandparent = parent:parent()
-          if grandparent and grandparent:type() == "jsx_element" then
-            -- We're in a JSX fragment, navigate between children
-            return parent, grandparent
-          end
-        end
-      end
-    end
-
-    -- Special case: if current is jsx_opening_element or jsx_closing_element,
-    -- use the parent jsx_element instead
-    if current:type() == "jsx_opening_element" or current:type() == "jsx_closing_element" then
-      local parent = current:parent()
-      if parent and parent:type() == "jsx_element" then
-        return parent, parent:parent()
-      end
-    end
-
-    -- Special case: if we're on a property_identifier inside a pair (object property key),
-    -- use the pair as the meaningful node to navigate between properties in the object.
-    -- But only if the pair is NOT the only property (would exit the context).
-    -- Example: { foo: value, bar: value } - when on "foo", navigate to "bar"
-    if current:type() == "property_identifier" then
-      local parent = current:parent()
-      if parent and parent:type() == "pair" then
-        local grandparent = parent:parent()
-        -- Check if this pair is inside an object (not a top-level pair)
-        if grandparent and grandparent:type() == "object" then
-          -- Count all property siblings (both pair and shorthand_property_identifier)
-          local prop_count = 0
-          for child in grandparent:iter_children() do
-            if child:type() == "pair" or child:type() == "shorthand_property_identifier" then
-              prop_count = prop_count + 1
-            end
-          end
-          -- If there are multiple properties, navigate between them
-          -- If only one property, it would jump outside the context (no-op)
-          if prop_count > 1 then
-            return parent, grandparent -- Return the pair and the object
-          else
-            return nil, "Single property in object - would exit context"
-          end
-        end
-      elseif parent and parent:type() == "property_signature" then
-        -- Similar handling for property_signature in type definitions
-        -- Example: type Foo = { bar: string; baz: number } - navigate between bar and baz
-        local grandparent = parent:parent()
-        if grandparent and grandparent:type() == "object_type" then
-          -- Count how many property_signature siblings exist
-          local prop_count = 0
-          for child in grandparent:iter_children() do
-            if child:type() == "property_signature" then
-              prop_count = prop_count + 1
-            end
-          end
-          -- If there are multiple properties, navigate between them
-          if prop_count > 1 then
-            return parent, grandparent -- Return the property_signature and the object_type
-          else
-            return nil, "Single property in object_type - would exit context"
-          end
-        end
-      end
-    end
-
-    -- Special case: if we're on a shorthand_property_identifier inside an object,
-    -- navigate between all properties (shorthand and regular pairs) in the object.
-    -- Example: { registered, scenario, normalProp: value } - navigate between all properties
-    if current:type() == "shorthand_property_identifier" then
-      local parent = current:parent()
-      if parent and parent:type() == "object" then
-        -- Count all meaningful property nodes (shorthand_property_identifier and pair)
-        local prop_count = 0
-        for child in parent:iter_children() do
-          if child:type() == "shorthand_property_identifier" or child:type() == "pair" then
-            prop_count = prop_count + 1
-          end
-        end
-        -- If there are multiple properties, navigate between them
-        if prop_count > 1 then
-          return current, parent -- Return the shorthand_property_identifier and the object
-        else
-          return nil, "Single property in object - would exit context"
-        end
-      end
-    end
-
-    -- Special case: if we're inside a list-like structure (array, arguments, parameters),
-    -- use the direct child as the meaningful node for navigation
-    -- This allows navigation between elements while staying within the container boundary
-    -- Examples:
-    --   [element1, element2] - navigate between array elements
-    --   func(arg1, arg2) - navigate between function call arguments
-    --   (param1: type, param2: type) - navigate between function parameters
-    local check_node = current
-
-    while check_node do
-      local parent = check_node:parent()
-      if parent and config.is_list_container_type(parent:type()) then
-        -- Special case for union_type: walk up to find the outermost union_type
-        -- since union types can be nested (A | B | C is parsed as nested unions)
-        if parent:type() == "union_type" then
-          local outermost = parent
-          while outermost:parent() and outermost:parent():type() == "union_type" do
-            outermost = outermost:parent()
-          end
-          parent = outermost
-        end
-
-        -- Before using list container navigation, check if we're inside a statement_block
-        -- with meaningful siblings. If so, prefer statement-level navigation.
-        -- Example: inside an arrow function with multiple statements, navigate between
-        -- statements, not between function arguments.
-
-        -- Walk up from current node to find if there's a meaningful node in a statement_block or switch_case
-        local test_node = current
-        while test_node and test_node ~= check_node do
-          if is_meaningful_node(test_node) then
-            local test_parent = test_node:parent()
-            if test_parent and (test_parent:type() == "statement_block" or test_parent:type() == "block") then
-              -- Count meaningful children in the statement block
-              local meaningful_count = 0
-              for child in test_parent:iter_children() do
-                if is_meaningful_node(child) then
-                  meaningful_count = meaningful_count + 1
-                end
-              end
-              -- If there are multiple meaningful statements, prefer statement navigation
-              if meaningful_count > 1 then
-                return test_node, test_parent
-              else
-                -- Single statement in block - no-op (don't navigate outside the block)
-                return nil, "Single statement in block - would exit context"
-              end
-            end
-            -- Check if parent is switch_case or switch_default
-            if test_parent and (test_parent:type() == "switch_case" or test_parent:type() == "switch_default") then
-              -- Count meaningful statement children in the case
-              local meaningful_count = 0
-              for child in test_parent:iter_children() do
-                if is_meaningful_node(child) then
-                  meaningful_count = meaningful_count + 1
-                end
-              end
-              -- If there are multiple meaningful statements in the case, prefer statement navigation
-              if meaningful_count > 1 then
-                return test_node, test_parent
-              else
-                -- Single statement in case - no-op (don't navigate outside the case)
-                return nil, "Single statement in case - would exit context"
-              end
-            end
-          end
-          test_node = test_node:parent()
-        end
-
-        -- check_node is a direct child of a list container
-        local element = check_node
-        -- Count non-skippable siblings in the container
-        local element_count = 0
-        for child in parent:iter_children() do
-          if not is_skippable_node(child) then
-            element_count = element_count + 1
-          end
-        end
-        -- If multiple elements, allow navigation
-        if element_count > 1 then
-          return element, parent
-        else
-          return nil, "Single element in list - would exit context"
-        end
-      end
-      check_node = parent
-    end
-
-    -- Special case: if we're inside a jsx_self_closing_element or jsx_element,
-    -- and its parent is also a jsx_element (i.e., we're in a JSX fragment <>...</>),
-    -- then use the jsx_self_closing_element/jsx_element as the navigation unit
-    -- This must come BEFORE is_meaningful_node check to handle JSX fragments correctly
-    if current:type() == "jsx_self_closing_element" or current:type() == "jsx_element" then
-      local parent = current:parent()
-      if parent and parent:type() == "jsx_element" then
-        -- We're inside a fragment, navigate between JSX children
-        return current, parent
-      end
-    end
-
-    if is_meaningful_node(current) then
-      local parent = current:parent()
-
-      -- Special case: For C#/Java, if we found variable_declaration but parent is local_declaration_statement or local_variable_declaration,
-      -- use the parent as the meaningful node instead (siblings are at that level)
-      if current:type() == "variable_declaration" and parent and (parent:type() == "local_declaration_statement" or parent:type() == "local_variable_declaration") then
-        current = parent
-        parent = current:parent()
-      end
-
-      -- Check if we're inside a switch_case or switch_default with single statement
-      if parent and (parent:type() == "switch_case" or parent:type() == "switch_default") then
-        -- Count meaningful statement children in the case
-        local meaningful_count = 0
-        for child in parent:iter_children() do
-          if is_meaningful_node(child) then
-            meaningful_count = meaningful_count + 1
-          end
-        end
-        -- If single statement, return nil (no-op, don't navigate outside the case)
-        if meaningful_count == 1 then
-          return nil, "Single statement in case - would exit context"
-        end
-      end
-
-      return current, parent
-    end
-    current = current:parent()
-  end
-
-  -- Fallback: if we didn't find a meaningful node, just use the first non-skippable node
-  current = node
-
-  while current and is_skippable_node(current) do
-    current = current:parent()
-  end
-
-  if current then
-    local current_type = current:type()
-
-    -- Special case: if we started on a comment or empty line,
-    -- we need to find the closest meaningful node to "escape" from the comment
-    if started_on_comment or started_on_empty_line or current_type == "chunk" then
-      -- Get the parent container to search for meaningful siblings
-      -- If we walked up from a comment, current is already the parent container (block/chunk)
-      -- If we're at chunk level (empty line), search chunk itself
-      local search_parent = current
-
-      if search_parent then
-        -- Collect all meaningful children
-        local meaningful_children = {}
-        for child in search_parent:iter_children() do
-          if is_meaningful_node(child) then
-            table.insert(meaningful_children, child)
-          end
-        end
-
-        if #meaningful_children > 0 then
-          -- Find closest meaningful nodes before and after cursor
-          local closest_before = nil
-          local closest_after = nil
-
-          for _, child in ipairs(meaningful_children) do
-            local child_row = child:start()
-            if child_row < row then
-              closest_before = child -- Keep updating to get the last one before
-            elseif child_row > row and not closest_after then
-              closest_after = child -- Take the first one after
-            end
-          end
-
-          -- Return a special marker that tells jump_to_sibling we're on a comment
-          -- and provides both direction options
-          return {
-            _on_comment = true,
-            closest_before = closest_before,
-            closest_after = closest_after,
-            parent = search_parent,
-            cursor_row = row,
-          },
-            search_parent
-        end
-      end
-    end
-
-    return current, current:parent()
-  end
-
-  return nil, "No valid node found at cursor"
+  return find_unit(node, row)
 end
 
 return M

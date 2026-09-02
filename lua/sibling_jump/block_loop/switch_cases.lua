@@ -45,15 +45,10 @@ function M.build_context(switch_node)
   })
   
   -- Find switch_body
-  local switch_body = M.find_switch_body(switch_node)
+  local switch_body = utils.find_child_by_type(switch_node, "switch_body")
   if not switch_body then
     -- Fallback: just switch and closing bracket
-    local _, _, end_row, end_col = switch_node:range()
-    table.insert(positions, {
-      row = end_row + 1,
-      col = end_col,
-      type = "closing_bracket",
-    })
+    table.insert(positions, utils.closing_position(switch_node, "closing_bracket"))
     return { positions = positions, switch_node = switch_node }
   end
   
@@ -80,12 +75,7 @@ function M.build_context(switch_node)
   end
   
   -- Last position: closing bracket of switch body
-  local _, _, end_row, end_col = switch_body:range()
-  table.insert(positions, {
-    row = end_row + 1,
-    col = end_col,
-    type = "closing_bracket",
-  })
+  table.insert(positions, utils.closing_position(switch_body, "closing_bracket"))
   
   return {
     positions = positions,
@@ -110,17 +100,6 @@ function M.navigate(context, cursor_pos, mode)
   -- Cycle to next (wrapping)
   local next_index = (current_index % #positions) + 1
   return positions[next_index]
-end
-
--- Helper to find switch_body in switch_statement
-function M.find_switch_body(switch_node)
-  for i = 0, switch_node:child_count() - 1 do
-    local child = switch_node:child(i)
-    if child:type() == "switch_body" then
-      return child
-    end
-  end
-  return nil
 end
 
 return M

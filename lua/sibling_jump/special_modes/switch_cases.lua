@@ -95,7 +95,7 @@ function M.detect(node)
       return false, nil, 0
     end
 
-    if utils.is_meaningful_node(test_node) then
+    if utils.starts_line(test_node) then
       local test_parent = test_node:parent()
 
       -- Check if parent is statement_block (for block-scoped cases)
@@ -103,7 +103,7 @@ function M.detect(node)
         -- Count meaningful children in the statement block
         local meaningful_count = 0
         for child in test_parent:iter_children() do
-          if utils.is_meaningful_node(child) then
+          if utils.starts_line(child) then
             meaningful_count = meaningful_count + 1
           end
         end
@@ -118,7 +118,7 @@ function M.detect(node)
         -- Count meaningful statement children in the case
         local meaningful_count = 0
         for child in test_parent:iter_children() do
-          if utils.is_meaningful_node(child) then
+          if utils.starts_line(child) then
             meaningful_count = meaningful_count + 1
           end
         end
@@ -235,16 +235,16 @@ function M.get_entry_point(switch_node, forward)
     -- Forward: land on the 'switch' keyword
     return switch_node, switch_node:start()
   end
-  
+
   -- Backward: land on the last case/default
   local cases = collect_switch_cases(switch_node)
-  
+
   if #cases > 0 then
     local last_case = cases[#cases]
     local target_row, target_col = get_case_keyword_position(last_case)
     return last_case, target_row, target_col
   end
-  
+
   -- No cases found, return the switch_node itself
   return switch_node, switch_node:start()
 end

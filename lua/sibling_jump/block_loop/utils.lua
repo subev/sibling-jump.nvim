@@ -54,6 +54,12 @@ function M.get_children_by_type(parent, node_type)
   return children
 end
 
+-- 1-indexed position of a node's last character (end_col is exclusive, so step back onto the bracket)
+function M.closing_position(node, pos_type)
+  local _, _, end_row, end_col = node:range()
+  return { row = end_row + 1, col = math.max(end_col - 1, 0), type = pos_type }
+end
+
 -- Find closest position to cursor in positions list
 function M.find_closest_position_index(positions, cursor_row)
   local closest_index = 1

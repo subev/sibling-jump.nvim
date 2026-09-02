@@ -5,6 +5,24 @@ local config = require("sibling_jump.config")
 
 local M = {}
 
+-- Smallest tree-sitter node at a 0-indexed position, or nil when the buffer has no parser
+function M.get_node_at(bufnr, row, col)
+  local lang = vim.treesitter.language.get_lang(vim.bo[bufnr].filetype)
+  if not lang then
+    return nil
+  end
+  local ok, parser = pcall(vim.treesitter.get_parser, bufnr, lang)
+  if not ok or not parser then
+    return nil
+  end
+  local tree = parser:parse()[1]
+  if not tree then
+    return nil
+  end
+  -- One-character range like vim.treesitter.get_node(); a zero-width range misses tokens on some grammars (Swift)
+  return tree:root():descendant_for_range(row, col, row, col + 1)
+end
+
 -- Check if a node is a comment node
 function M.is_comment_node(node)
   if not node then
@@ -56,57 +74,22 @@ function M.is_skippable_node(node)
   return false
 end
 
--- Check if a node type is a "meaningful unit" we want to jump between
-function M.is_meaningful_node(node)
-  if not node then
-    return false
-  end
+-- Column of the first non-blank character on a 0-indexed row (-1 for a blank line)
+function M.line_start_col(bufnr, row)
+  local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
+  return vim.fn.match(line, [[\S]])
+end
 
-  local node_type = node:type()
+-- Does the node begin at its line's first non-blank column?
+function M.is_line_leading(node)
+  local row, col = node:start()
+  return M.line_start_col(0, row) == col
+end
 
-  -- Special case: identifier is meaningful in some contexts but not others
-  if node_type == "identifier" then
-    local parent = node:parent()
-    if not parent then
-      return false
-    end
-
-    -- identifier is meaningful in array_pattern (tuple destructuring)
-    if parent:type() == "array_pattern" then
-      return true
-    end
-
-    -- identifier is NOT meaningful as the object in member_expression
-    if parent:type() == "member_expression" then
-      return false
-    end
-
-    -- identifier is NOT meaningful in other contexts
-    return false
-  end
-
-  -- Special case: type_identifier is meaningful in some contexts but not others
-  if node_type == "type_identifier" then
-    local parent = node:parent()
-    if not parent then
-      return false
-    end
-
-    -- type_identifier is NOT meaningful when it's a member of a union_type
-    -- (we want to navigate between union members, not individual type_identifiers)
-    if parent:type() == "union_type" then
-      return false
-    end
-
-    -- type_identifier IS meaningful when it's the name of a type declaration
-    -- This is handled by the special check in get_node_at_cursor
-
-    -- type_identifier is meaningful in other contexts (e.g., as a type annotation)
-    return true
-  end
-
-  -- Check if node type is in the meaningful types list
-  return config.is_meaningful_type(node_type)
+-- A named node that begins its line: the shape every statement, member and clause has,
+-- without knowing its name
+function M.starts_line(node)
+  return node ~= nil and node:named() and M.is_line_leading(node)
 end
 
 -- Find the index of a node in a list
@@ -121,24 +104,6 @@ function M.find_node_index(node, node_list)
   end
 
   return nil
-end
-
--- Recursively collect all union type members from a nested union_type structure
-function M.collect_union_members(union_node, members)
-  members = members or {}
-
-  for child in union_node:iter_children() do
-    if child:type() == "union_type" then
-      -- Recursively collect from nested union
-      M.collect_union_members(child, members)
-    elseif child:type() == "type_identifier" or child:type() == "literal_type" or child:type() == "object_type" then
-      -- This is an actual union member
-      table.insert(members, child)
-    end
-    -- Skip | operators and other punctuation
-  end
-
-  return members
 end
 
 return M

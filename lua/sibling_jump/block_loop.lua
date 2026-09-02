@@ -14,6 +14,7 @@ local loops = require("sibling_jump.block_loop.loops")
 local if_blocks = require("sibling_jump.block_loop.if_blocks")
 local declarations = require("sibling_jump.block_loop.declarations")
 local switch_cases = require("sibling_jump.block_loop.switch_cases")
+local utils = require("sibling_jump.utils")
 
 local M = {}
 
@@ -36,7 +37,7 @@ function M.jump_to_boundary(opts)
   local col = cursor[2]
   
   -- Get treesitter node at cursor
-  local node = M.get_node_at_cursor(bufnr, row, col)
+  local node = utils.get_node_at(bufnr, row, col)
   if not node then
     return  -- No-op
   end
@@ -60,7 +61,7 @@ function M.jump_to_boundary(opts)
       -- In visual mode, moving cursor naturally extends the selection
       local target = handler.navigate(context, cursor, mode)
       if target then
-        M.jump_to_position(target.row, target.col, mode)
+        M.jump_to_position(target.row, target.col)
         return
       end
     end
@@ -69,57 +70,14 @@ function M.jump_to_boundary(opts)
   -- No supported block detected - no-op (silent)
 end
 
--- Get treesitter node at cursor position
-function M.get_node_at_cursor(bufnr, row, col)
-  local lang = vim.treesitter.language.get_lang(vim.bo[bufnr].filetype)
-  if not lang then return nil end
-  
-  local ok, parser = pcall(vim.treesitter.get_parser, bufnr, lang)
-  if not ok or not parser then return nil end
-  
-  local tree = parser:parse()[1]
-  if not tree then return nil end
-  
-  local root = tree:root()
-  return root:descendant_for_range(row, col, row, col)
-end
-
 -- Jump to position with jump list and optional centering
-function M.jump_to_position(row, col, mode)
+function M.jump_to_position(row, col)
   vim.cmd("normal! m'")  -- Add to jump list
   vim.api.nvim_win_set_cursor(0, { row, col })
   
   if config.center_on_jump then
     vim.cmd("normal! zz")
   end
-end
-
--- Select entire block in visual mode (from first to last position)
-function M.select_block(positions)
-  if #positions < 2 then
-    return
-  end
-  
-  local first = positions[1]
-  local last = positions[#positions]
-  
-  -- If already in visual mode, exit and re-enter to reset selection
-  local current_mode = vim.api.nvim_get_mode().mode
-  local was_visual = current_mode == 'v' or current_mode == 'V' or current_mode == '\22'
-  
-  if was_visual then
-    -- Exit visual mode
-    vim.cmd('normal! ' .. vim.api.nvim_replace_termcodes('<Esc>', true, false, true))
-  end
-  
-  -- Set cursor to first position
-  vim.api.nvim_win_set_cursor(0, { first.row, first.col })
-  
-  -- Start visual mode
-  vim.cmd('normal! v')
-  
-  -- Extend selection to last position
-  vim.api.nvim_win_set_cursor(0, { last.row, last.col })
 end
 
 return M

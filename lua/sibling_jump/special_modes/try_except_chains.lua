@@ -1,28 +1,38 @@
--- Try-except-finally chain navigation for sibling-jump.nvim
--- Handles navigation through Python's try/except/else/finally structures
+-- Try/catch chain navigation for sibling-jump.nvim
+-- Python try/except/else/finally, JS try/catch/finally, Swift do/catch
 
 local M = {}
 
--- Collect all except/else/finally clauses in a try statement
+-- Grammars name the statement try_statement or do_statement, and its clauses *except*, *catch*,
+-- *finally*, or (Python) else_clause
+local function is_try_statement(node)
+  local t = node:type()
+  return t == "try_statement" or t == "do_statement"
+end
+
+local function is_try_clause(node)
+  if not node:named() then
+    return false
+  end
+  local t = node:type()
+  return t:find("except") ~= nil or t:find("catch") ~= nil or t:find("finally") ~= nil or t == "else_clause"
+end
+
+-- Collect all except/catch/finally clauses in a try statement
 -- Returns: list of clause nodes (in order from first to last)
 local function collect_try_clauses(try_node)
   local clauses = {}
-  
-  if not try_node or try_node:type() ~= "try_statement" then
+
+  if not try_node or not is_try_statement(try_node) then
     return clauses
   end
-  
-  for i = 0, try_node:child_count() - 1 do
-    local child = try_node:child(i)
-    local child_type = child:type()
-    
-    if child_type == "except_clause" 
-       or child_type == "else_clause" 
-       or child_type == "finally_clause" then
+
+  for child in try_node:iter_children() do
+    if is_try_clause(child) then
       table.insert(clauses, child)
     end
   end
-  
+
   return clauses
 end
 
@@ -32,27 +42,19 @@ local function get_clause_keyword_position(clause_node)
   if not clause_node then
     return nil, nil
   end
-  
-  local clause_type = clause_node:type()
-  local valid_types = {
-    ["except_clause"] = true,
-    ["else_clause"] = true,
-    ["finally_clause"] = true,
-  }
-  
-  if not valid_types[clause_type] then
+
+  if not is_try_clause(clause_node) then
     return nil, nil
   end
-  
-  -- Find the keyword child (except, else, finally)
-  for i = 0, clause_node:child_count() - 1 do
-    local child = clause_node:child(i)
+
+  -- Find the keyword child (except, catch, else, finally)
+  for child in clause_node:iter_children() do
     local child_type = child:type()
-    if child_type == "except" or child_type == "else" or child_type == "finally" then
+    if child_type == "except" or child_type == "catch" or child_type == "else" or child_type == "finally" then
       return child:start()
     end
   end
-  
+
   -- Fallback to clause start position
   return clause_node:start()
 end
@@ -64,67 +66,62 @@ function M.detect(node)
   if not node then
     return false, nil, 0
   end
-  
+
   -- Walk up to find try_statement or except/finally clause
   local current = node
   local depth = 0
   local found_try = nil
-  
+
   while current and depth < 20 do
     local current_type = current:type()
-    
-    if current_type == "try_statement" then
+
+    if is_try_statement(current) then
       found_try = current
       break
-    elseif current_type == "except_clause" 
-           or current_type == "finally_clause"
-           or (current_type == "else_clause" and current:parent() and current:parent():type() == "try_statement") then
-      -- We're in a clause, get parent try_statement
+    elseif is_try_clause(current) and current:parent() and is_try_statement(current:parent()) then
       found_try = current:parent()
       break
     end
-    
+
     -- Stop if we've gone too far up
     if current_type == "block" or current_type == "module" then
       break
     end
-    
+
     current = current:parent()
     depth = depth + 1
   end
-  
-  if not found_try or found_try:type() ~= "try_statement" then
+
+  if not found_try or not is_try_statement(found_try) then
     return false, nil, 0
   end
-  
+
   -- Collect clauses
   local clauses = collect_try_clauses(found_try)
   if #clauses == 0 then
     return false, nil, 0
   end
-  
+
   -- Determine current position
   local cursor = vim.api.nvim_win_get_cursor(0)
   local cursor_row = cursor[1] - 1
-  
-  -- Check if cursor is on one of the clauses
+
+  -- Only the keyword lines are part of the chain; statements inside the bodies navigate normally
   for i, clause in ipairs(clauses) do
-    local clause_start_row = clause:start()
-    local clause_end_row = select(3, clause:range())
-    
-    if cursor_row >= clause_start_row and cursor_row <= clause_end_row then
+    if cursor_row == clause:start() then
       return true, found_try, i
     end
   end
-  
-  -- Check if cursor is on the main try block
-  local try_start_row = found_try:start()
-  local first_clause_row = clauses[1]:start()
-  
-  if cursor_row >= try_start_row and cursor_row < first_clause_row then
+
+  local try_start_row, _, try_end_row = found_try:range()
+  if cursor_row == try_start_row then
     return true, found_try, 0
   end
-  
+  -- On the closing line: a virtual position after the last clause, so backward reaches it
+  if cursor_row == try_end_row then
+    return true, found_try, #clauses + 1
+  end
+
   return false, nil, 0
 end
 
@@ -132,7 +129,7 @@ end
 -- Returns: target node, target_row, target_col, or nil
 function M.navigate(try_node, current_pos, forward, get_sibling_node)
   local clauses = collect_try_clauses(try_node)
-  
+
   if forward then
     if current_pos == 0 then
       -- On main try, jump to first clause
@@ -187,7 +184,7 @@ function M.navigate(try_node, current_pos, forward, get_sibling_node)
       return prev_clause, target_row, target_col
     end
   end
-  
+
   return nil, nil, nil
 end
 

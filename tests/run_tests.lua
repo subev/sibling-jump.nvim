@@ -17,6 +17,36 @@ local function assert_eq(expected, actual, message)
   end
 end
 
+
+-- Press in one direction from `start`, asserting each landing, then press twice more and assert the
+-- cursor stays put: boundaries must be no-ops, never an escape to another level
+local function assert_walk(file, start, forward, landings)
+  vim.cmd("edit " .. file)
+  vim.api.nvim_win_set_cursor(0, start)
+  local direction = forward and "forward" or "backward"
+  for i, expected in ipairs(landings) do
+    sibling_jump.jump_to_sibling({ forward = forward })
+    local pos = vim.api.nvim_win_get_cursor(0)
+    assert_eq(expected[1] .. ":" .. expected[2], pos[1] .. ":" .. pos[2], string.format("%s step %d", direction, i))
+  end
+  local last = vim.api.nvim_win_get_cursor(0)
+  for _ = 1, 2 do
+    sibling_jump.jump_to_sibling({ forward = forward })
+  end
+  local pos = vim.api.nvim_win_get_cursor(0)
+  assert_eq(last[1] .. ":" .. last[2], pos[1] .. ":" .. pos[2], direction .. " extra presses at the boundary must not move")
+end
+
+local function assert_round_trip(file, start, landings)
+  assert_walk(file, start, true, landings)
+  local reversed = {}
+  for i = #landings - 1, 1, -1 do
+    table.insert(reversed, landings[i])
+  end
+  table.insert(reversed, start)
+  assert_walk(file, landings[#landings], false, reversed)
+end
+
 local function run_tests()
   print("=== Running sibling_jump tests ===")
   print("")
@@ -491,13 +521,13 @@ test("Arrays: navigate between objects", function()
   assert_eq(9, pos[1], "Should jump to second object")
 end)
 
-test("Arrays: single element is no-op", function()
+test("Arrays: single element navigates the enclosing statement", function()
   vim.cmd("edit tests/fixtures/arrays.ts")
   vim.api.nvim_win_set_cursor(0, { 20, 16 }) -- On single element array [1]
 
   sibling_jump.jump_to_sibling({ forward = true })
   local pos = vim.api.nvim_win_get_cursor(0)
-  assert_eq(20, pos[1], "Should not move from single element")
+  assert_eq(23, pos[1], "A one-element list has no siblings, so the statement moves instead")
 end)
 
 test("Function params: forward navigation", function()
@@ -553,13 +583,13 @@ test("Function args: backward navigation", function()
   assert_eq(7, pos[2], "Should jump to second argument")
 end)
 
-test("Function params: single parameter is no-op", function()
+test("Function params: single parameter navigates the enclosing statement", function()
   vim.cmd("edit tests/fixtures/function_params.ts")
   vim.api.nvim_win_set_cursor(0, { 10, 16 }) -- On single parameter 'x'
 
   sibling_jump.jump_to_sibling({ forward = true })
   local pos = vim.api.nvim_win_get_cursor(0)
-  assert_eq(10, pos[1], "Should not move from single parameter")
+  assert_eq(13, pos[1], "A one-parameter list has no siblings, so the statement moves instead")
 end)
 
 test("Function params: multi-line navigation", function()
@@ -623,13 +653,13 @@ test("Imports: single line navigation", function()
   assert_eq(true, pos[2] > 10, "Should have moved to next import")
 end)
 
-test("Imports: single import is no-op", function()
+test("Imports: single import navigates the enclosing statement", function()
   vim.cmd("edit tests/fixtures/imports.ts")
   vim.api.nvim_win_set_cursor(0, { 15, 9 }) -- On 'single' (only import)
 
   sibling_jump.jump_to_sibling({ forward = true })
   local pos = vim.api.nvim_win_get_cursor(0)
-  assert_eq(15, pos[1], "Should not move from single import")
+  assert_eq(18, pos[1], "A one-name import has no siblings, so the statement moves instead")
 end)
 
 test("Nested contexts: statements inside arrow function in arguments", function()
@@ -1666,12 +1696,12 @@ test("Lua if-else-elseif: backward from else continues to previous elseif", func
 end)
 
 test("Lua nested if-elseif: navigate inner chain not outer", function()
-  vim.cmd("edit lua/sibling_jump/node_finder.lua")
-  vim.api.nvim_win_set_cursor(0, { 188, 8 }) -- On nested 'if parent and parent:type() == "pair"'
+  vim.cmd("edit tests/fixtures/lua_block_loop.lua")
+  vim.api.nvim_win_set_cursor(0, { 22, 4 }) -- On nested 'if parent and parent:type() == "pair"'
 
   sibling_jump.jump_to_sibling({ forward = true })
   local pos = vim.api.nvim_win_get_cursor(0)
-  assert_eq(207, pos[1], "Should jump from nested if (L188) to its elseif (L207), not outer if's siblings")
+  assert_eq(27, pos[1], "Should jump from nested if (L22) to its elseif (L27), not outer if's siblings")
 end)
 
 -- ============================================================================
@@ -2000,19 +2030,20 @@ test("Python statements: backward navigation", function()
   assert_eq(5, pos[1], "Should jump from count (L6) to total (L5)")
 end)
 
-test("Python tuple unpacking: navigation", function()
+test("Python tuple unpacking: navigates the unpacked names like TS destructuring", function()
   vim.cmd("edit tests/fixtures/python_statements.py")
-  vim.api.nvim_win_set_cursor(0, {9, 4})  -- On 'name, version = ...'
-  
+  vim.api.nvim_win_set_cursor(0, {9, 4})  -- On 'name' in 'name, version = ...'
+
   sibling_jump.jump_to_sibling({ forward = true })
   local pos = vim.api.nvim_win_get_cursor(0)
-  assert_eq(10, pos[1], "Should jump from name,version (L9) to x,y,z (L10)")
+  assert_eq(9, pos[1], "Should stay on the same line")
+  assert_eq(10, pos[2], "Should jump from name to version")
 end)
 
 test("Python for loop: navigation to", function()
   vim.cmd("edit tests/fixtures/python_statements.py")
-  vim.api.nvim_win_set_cursor(0, {10, 4})  -- On 'x, y, z = ...'
-  
+  vim.api.nvim_win_set_cursor(0, {10, 12})  -- On '=' of 'x, y, z = ...' (outside the tuple)
+
   sibling_jump.jump_to_sibling({ forward = true })
   local pos = vim.api.nvim_win_get_cursor(0)
   assert_eq(13, pos[1], "Should jump to for loop (L13)")
@@ -2114,4 +2145,188 @@ test("Python functions: top-level navigation", function()
 end)
 
 -- Run all tests
+
+-- ============================================================================
+-- SWIFT TESTS (grammar-agnostic finder; fixture mirrors a SwiftUI screen)
+-- Each scenario walks to the boundary in both directions and presses again there.
+-- ============================================================================
+
+local swift = "tests/fixtures/swift_reader.swift"
+
+test("Swift: top-level declarations round trip", function()
+  assert_round_trip(swift, { 1, 0 }, { { 2, 0 }, { 4, 0 }, { 262, 0 }, { 276, 0 }, { 286, 0 } })
+end)
+
+test("Swift: struct members round trip, skipping comments and spanning multi-line members", function()
+  assert_round_trip(swift, { 5, 4 }, {
+    { 6, 4 }, { 7, 4 }, { 8, 4 }, { 10, 4 }, { 12, 4 }, { 14, 4 }, { 16, 4 }, { 20, 4 }, { 25, 4 }, { 32, 4 },
+    { 40, 4 }, { 100, 4 }, { 105, 4 }, { 115, 4 }, { 121, 4 }, { 162, 4 }, { 183, 4 }, { 200, 4 }, { 240, 4 }, { 246, 4 },
+  })
+end)
+
+test("Swift: from a comment line between members, either direction reaches a member", function()
+  vim.cmd("edit tests/fixtures/swift_reader.swift")
+  vim.api.nvim_win_set_cursor(0, { 11, 4 })
+  sibling_jump.jump_to_sibling({ forward = true })
+  assert_eq(12, vim.api.nvim_win_get_cursor(0)[1], "Forward from the comment reaches the next member")
+
+  vim.api.nvim_win_set_cursor(0, { 11, 4 })
+  sibling_jump.jump_to_sibling({ forward = false })
+  assert_eq(10, vim.api.nvim_win_get_cursor(0)[1], "Backward from the comment reaches the previous member")
+end)
+
+test("Swift: enum cases round trip", function()
+  assert_round_trip(swift, { 26, 8 }, { { 27, 8 }, { 28, 8 }, { 29, 8 } })
+end)
+
+test("Swift: enum cases from a comment line", function()
+  assert_walk(swift, { 35, 8 }, true, { { 36, 8 }, { 37, 8 } })
+  assert_walk(swift, { 35, 8 }, false, { { 34, 8 }, { 33, 8 } })
+end)
+
+test("Swift: body modifier chain round trip from the root call", function()
+  assert_round_trip(swift, { 41, 8 }, {
+    { 57, 8 }, { 58, 8 }, { 60, 8 }, { 61, 8 }, { 77, 8 }, { 82, 8 }, { 83, 8 }, { 94, 8 },
+  })
+end)
+
+test("Swift: body modifier chain from the middle of the chain", function()
+  assert_walk(swift, { 61, 8 }, true, { { 77, 8 }, { 82, 8 }, { 83, 8 }, { 94, 8 } })
+  assert_walk(swift, { 61, 8 }, false, { { 60, 8 }, { 58, 8 }, { 57, 8 }, { 41, 8 } })
+end)
+
+test("Swift: switch entries round trip inside the body", function()
+  assert_round_trip(swift, { 43, 12 }, { { 45, 12 }, { 47, 12 }, { 51, 12 } })
+end)
+
+test("Swift: single statement in a switch entry never leaves the entry", function()
+  assert_walk(swift, { 44, 16 }, true, {})
+  assert_walk(swift, { 44, 16 }, false, {})
+end)
+
+test("Swift: statements in a trailing-closure body (.toolbar) round trip", function()
+  assert_round_trip(swift, { 62, 12 }, { { 68, 12 }, { 71, 12 } })
+end)
+
+test("Swift: if/else keywords are one chain; the lone if is the closure's only statement", function()
+  assert_round_trip(swift, { 84, 12 }, { { 89, 14 } })
+end)
+
+test("Swift: statements inside the if body stay inside it", function()
+  assert_round_trip(swift, { 85, 16 }, { { 86, 16 } })
+end)
+
+test("Swift: statements inside the else body stay inside it", function()
+  assert_round_trip(swift, { 90, 16 }, { { 91, 16 } })
+end)
+
+test("Swift: if / else if / else chain round trip", function()
+  assert_round_trip(swift, { 106, 8 }, { { 108, 10 }, { 110, 10 } })
+end)
+
+test("Swift: else-if chain from the closing brace before else", function()
+  assert_walk(swift, { 108, 8 }, true, { { 110, 10 } })
+  assert_walk(swift, { 108, 8 }, false, { { 106, 8 } })
+end)
+
+test("Swift: guard and assignments in a function body round trip", function()
+  assert_round_trip(swift, { 116, 8 }, { { 117, 8 }, { 118, 8 } })
+end)
+
+test("Swift: function body statements ending in a trailing-closure call", function()
+  assert_round_trip(swift, { 122, 8 }, { { 123, 8 }, { 124, 8 } })
+end)
+
+test("Swift: statements in a closure with a parameter (GeometryReader { proxy in })", function()
+  assert_round_trip(swift, { 125, 12 }, { { 126, 12 }, { 130, 12 }, { 131, 12 } })
+end)
+
+test("Swift: ZStack children; a call's modifier line is a step, then the next statement", function()
+  assert_round_trip(swift, { 132, 16 }, { { 140, 16 }, { 141, 16 }, { 148, 16 } })
+end)
+
+test("Swift: multi-line labeled arguments round trip", function()
+  assert_round_trip(swift, { 135, 24 }, { { 136, 24 }, { 137, 24 }, { 138, 24 } })
+end)
+
+test("Swift: single-line labeled arguments round trip", function()
+  assert_round_trip(swift, { 143, 24 }, { { 143, 40 }, { 143, 60 } })
+end)
+
+test("Swift: VStack children round trip", function()
+  assert_round_trip(swift, { 149, 20 }, { { 153, 20 }, { 154, 20 } })
+end)
+
+test("Swift: statements before a switch round trip", function()
+  assert_round_trip(swift, { 184, 8 }, { { 185, 8 }, { 188, 8 }, { 189, 8 } })
+end)
+
+test("Swift: switch entries round trip when the switch is one of several statements", function()
+  assert_round_trip(swift, { 190, 8 }, { { 192, 8 }, { 195, 8 } })
+end)
+
+test("Swift: two statements in a switch entry stay inside it", function()
+  assert_round_trip(swift, { 193, 12 }, { { 194, 12 } })
+end)
+
+test("Swift: do/catch: do is a statement, catch is its clause", function()
+  assert_round_trip(swift, { 201, 8 }, { { 202, 8 }, { 209, 8 }, { 210, 8 }, { 211, 8 }, { 233, 10 } })
+end)
+
+test("Swift: statements in a multi-line guard's else body stay inside it", function()
+  assert_round_trip(swift, { 206, 12 }, { { 207, 12 } })
+end)
+
+test("Swift: do body statements round trip, including if/else entry from below", function()
+  assert_round_trip(swift, { 212, 12 }, {
+    { 213, 12 }, { 214, 12 }, { 215, 12 }, { 220, 12 }, { 221, 12 }, { 228, 14 }, { 232, 12 },
+  })
+end)
+
+test("Swift: catch body statements round trip", function()
+  assert_round_trip(swift, { 234, 12 }, { { 235, 12 }, { 236, 12 } })
+end)
+
+test("Swift: indented modifier chain reaches its root going back", function()
+  assert_walk(swift, { 242, 12 }, true, { { 243, 12 } })
+  assert_walk(swift, { 243, 12 }, false, { { 242, 12 }, { 241, 8 } })
+end)
+
+test("Swift: single statement in a for-where body never leaves it", function()
+  assert_walk(swift, { 253, 12 }, true, {})
+  assert_walk(swift, { 253, 12 }, false, {})
+end)
+
+test("Swift: modifier after a trailing closure goes back to the call", function()
+  assert_walk(swift, { 272, 8 }, true, {})
+  assert_walk(swift, { 272, 8 }, false, { { 267, 8 } })
+end)
+
+test("Swift: blank line between top-level declarations", function()
+  assert_walk(swift, { 275, 0 }, true, { { 276, 0 }, { 286, 0 } })
+
+  vim.api.nvim_win_set_cursor(0, { 275, 0 })
+  sibling_jump.jump_to_sibling({ forward = false })
+  assert_eq(262, vim.api.nvim_win_get_cursor(0)[1], "Backward from the blank line reaches the previous declaration")
+end)
+
+test("Swift: a comment at column zero does not split the statements around it", function()
+  assert_round_trip("tests/fixtures/swift_edge.swift", { 3, 8 }, { { 5, 8 }, { 6, 8 } })
+end)
+
+test("Swift: chain inside a declaration flows into the next statement and back to the declaration", function()
+  assert_walk("tests/fixtures/swift_edge.swift", { 11, 12 }, true, { { 12, 12 }, { 13, 8 } })
+  assert_walk("tests/fixtures/swift_edge.swift", { 11, 12 }, false, { { 10, 8 } })
+  assert_walk("tests/fixtures/swift_edge.swift", { 13, 8 }, false, { { 10, 8 } })
+end)
+
+test("Swift: if/else chain is detected from leading whitespace too", function()
+  assert_walk(swift, { 106, 0 }, true, { { 108, 10 }, { 110, 10 } })
+end)
+
+test("Swift: an extension with one member is a no-op inside", function()
+  assert_walk(swift, { 277, 4 }, true, {})
+  assert_walk(swift, { 277, 4 }, false, {})
+end)
+
 run_tests()

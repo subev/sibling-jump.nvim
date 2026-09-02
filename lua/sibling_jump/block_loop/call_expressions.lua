@@ -3,6 +3,8 @@
 -- Also handles await expressions: await foo() or await foo.bar()
 -- When cursor is on a method/function name or await keyword, cycles between the start and closing paren
 
+local utils = require("sibling_jump.block_loop.utils")
+
 local M = {}
 
 -- Detect if cursor is on a call expression
@@ -256,24 +258,15 @@ end
 -- name_node: the node to use as the start position (await keyword, function name, or property)
 -- await_expr: the await_expression wrapping the call (if any)
 function M.build_context(call_expr, name_node, await_expr)
-  -- Determine the end position (closing paren)
-  -- If awaited, use the await_expression end, otherwise use call_expression end
-  local end_node = await_expr or call_expr
-  local _, _, end_row, end_col = end_node:range()
-
   -- Get the start position (await keyword, method name, or function name)
   local name_row, name_col = name_node:start()
-
-  -- Adjust end_col to be inside the closing paren (one position before the range end)
-  -- This ensures we land on ')' not on ';' after it
-  local closing_col = end_col > 0 and (end_col - 1) or 0
 
   return {
     node = call_expr,
     await_node = await_expr,
     positions = {
       { row = name_row + 1, col = name_col }, -- Start position (1-indexed)
-      { row = end_row + 1, col = closing_col }, -- Closing paren (1-indexed, adjusted)
+      utils.closing_position(await_expr or call_expr), -- Closing paren
     },
     current_index = nil, -- Will be set during navigation
   }

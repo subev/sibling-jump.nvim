@@ -13,11 +13,6 @@ function M.get_sibling_nodes(parent)
 
   local parent_type = parent:type()
 
-  -- Special case: for union_type, collect all members recursively
-  if parent_type == "union_type" then
-    return utils.collect_union_members(parent)
-  end
-
   local siblings = {}
   for child in parent:iter_children() do
     if not utils.is_skippable_node(child) then
@@ -39,17 +34,28 @@ function M.get_sibling_nodes(parent)
 end
 
 -- Find next/prev sibling node
-function M.get_sibling_node(node, parent, forward)
+-- members: optional explicit list to navigate (node_finder supplies it); defaults to parent's children
+function M.get_sibling_node(node, parent, forward, members)
   if not node or not parent then
     return nil
   end
 
-  local siblings = M.get_sibling_nodes(parent)
+  local siblings = members or M.get_sibling_nodes(parent)
   if #siblings == 0 then
     return nil
   end
 
   local current_index = utils.find_node_index(node, siblings)
+  -- A member list holds one node per line; the unit may be a smaller node on the same line
+  if not current_index and members then
+    local node_row = node:start()
+    for i, member in ipairs(members) do
+      if member:start() == node_row then
+        current_index = i
+        break
+      end
+    end
+  end
   if not current_index then
     return nil
   end

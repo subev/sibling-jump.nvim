@@ -52,12 +52,7 @@ function M.build_context(loop_node)
   })
   
   -- Last position: closing bracket/end
-  local closing_row, closing_col = M.find_closing_bracket(loop_node, loop_type)
-  table.insert(positions, {
-    row = closing_row + 1,
-    col = closing_col,
-    type = "closing_bracket",
-  })
+  table.insert(positions, M.find_closing_bracket(loop_node, loop_type))
   
   return {
     positions = positions,
@@ -65,31 +60,20 @@ function M.build_context(loop_node)
   }
 end
 
--- Find the closing bracket of the loop
+-- Find the closing bracket position of the loop
 function M.find_closing_bracket(loop_node, loop_type)
   -- For Lua loops: look for 'end' keyword child
   if loop_type == "for_in_loop" or loop_type == "for_loop" or loop_type == "while_loop" then
-    for i = 0, loop_node:child_count() - 1 do
-      local child = loop_node:child(i)
-      if child:type() == "end" then
-        -- Found Lua 'end' keyword
-        local end_row, end_col = child:start()
-        return end_row, end_col
-      end
+    local end_keyword = utils.find_child_by_type(loop_node, "end")
+    if end_keyword then
+      local end_row, end_col = end_keyword:start()
+      return { row = end_row + 1, col = end_col, type = "closing_bracket" }
     end
   end
-  
-  -- For TypeScript/JavaScript: find the statement_block and get its closing bracket
-  for i = 0, loop_node:child_count() - 1 do
-    local child = loop_node:child(i)
-    if child:type() == "statement_block" then
-      local _, _, end_row, end_col = child:range()
-      return end_row, end_col
-    end
-  end
-  
-  -- Fallback: use loop_node's end
-  return loop_node:end_()
+
+  -- For TypeScript/JavaScript: closing bracket of the statement_block, falling back to the loop's end
+  local body = utils.find_child_by_type(loop_node, "statement_block") or loop_node
+  return utils.closing_position(body, "closing_bracket")
 end
 
 -- Navigate to next position in cycle

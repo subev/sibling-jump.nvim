@@ -10,6 +10,7 @@
 
 local navigation = require("sibling_jump.navigation")
 local node_finder = require("sibling_jump.node_finder")
+local utils = require("sibling_jump.utils")
 local method_chains = require("sibling_jump.special_modes.method_chains")
 local if_else_chains = require("sibling_jump.special_modes.if_else_chains")
 local switch_cases = require("sibling_jump.special_modes.switch_cases")
@@ -37,20 +38,16 @@ local stored_config = {
 -- Track which buffers have sibling-jump enabled
 local enabled_buffers = {}
 
--- Alias for backward compatibility
 local get_sibling_node = navigation.get_sibling_node
 
 -- Special navigation modes (in priority order)
--- Each mode has: detect(node) -> detected, context_data...
--- And: navigate(context_data..., forward) -> target_node, row, col | nil
+-- Each mode has: detect(node) -> detected, ctx1, ctx2
+-- And: navigate(ctx1, ctx2, forward) -> target_node, row, col | nil
 local special_modes = {
   {
     name = "method_chains",
-    detect = function(node)
-      local in_chain, property_node = method_chains.detect(node)
-      return in_chain, property_node
-    end,
-    navigate = function(property_node, forward)
+    detect = method_chains.detect,
+    navigate = function(property_node, _, forward)
       local target = method_chains.navigate(property_node, forward)
       if not target then return nil end
       return target, target:start()
@@ -102,24 +99,20 @@ function M.jump_to_sibling(opts)
     local cursor = vim.api.nvim_win_get_cursor(0)
     local row, col = cursor[1] - 1, cursor[2]
 
-    -- Get tree-sitter node at cursor (if available)
-    local node = handlers.get_node_at_cursor(bufnr, row, col)
+    -- In leading whitespace the line's first token stands for the cursor, as in node_finder
+    local first_nonws_col = utils.line_start_col(bufnr, row)
+    if first_nonws_col >= 0 and col < first_nonws_col then
+      col = first_nonws_col
+    end
+    local node = utils.get_node_at(bufnr, row, col)
 
     -- Try special navigation modes (if node available)
     if node then
       for _, mode in ipairs(special_modes) do
         local detected, ctx1, ctx2 = mode.detect(node)
         if detected then
-          local target_node, target_row, target_col
-          -- Call navigate with the right number of args based on context
-          if ctx2 ~= nil then
-            -- Two context values (e.g., if_node, current_pos)
-            target_node, target_row, target_col = mode.navigate(ctx1, ctx2, forward)
-          else
-            -- One context value (e.g., property_node)
-            target_node, target_row, target_col = mode.navigate(ctx1, forward)
-          end
-          
+          local target_node, target_row, target_col = mode.navigate(ctx1, ctx2, forward)
+
           if target_node then
             -- Special mode found a target
             perform_jump(target_row, target_col)
@@ -135,34 +128,24 @@ function M.jump_to_sibling(opts)
     end
 
     -- Regular navigation: handle special cases first
-    local current_node, parent = node_finder.get_node_at_cursor(bufnr)
-    
+    local current_node, parent, members = node_finder.get_node_at_cursor(bufnr)
+
     if not current_node or not parent then
       return -- No node or at root level
     end
 
-    -- Handle whitespace
-    local whitespace_result = handlers.handle_whitespace(current_node, forward, positioning)
-    if whitespace_result then
-      if whitespace_result == "no_op" then
+    -- Handle whitespace/comment markers
+    local marker_result = handlers.handle_marker(current_node, forward, positioning)
+    if marker_result then
+      if marker_result == "no_op" then
         return
       end
-      perform_jump(whitespace_result.row, whitespace_result.col)
-      return
-    end
-
-    -- Handle comments
-    local comment_result = handlers.handle_comment(current_node, forward, positioning)
-    if comment_result then
-      if comment_result == "no_op" then
-        return
-      end
-      perform_jump(comment_result.row, comment_result.col)
+      perform_jump(marker_result.row, marker_result.col)
       return
     end
 
     -- Find sibling node
-    local target_node = get_sibling_node(current_node, parent, forward)
+    local target_node = get_sibling_node(current_node, parent, forward, members)
     if not target_node then
       return -- No sibling found
     end
@@ -275,8 +258,8 @@ function M.setup(opts)
   stored_config.block_loop_key = opts.block_loop_key or nil
 
   -- Update configuration
-  config.center_on_jump = opts.center_on_jump ~= nil and opts.center_on_jump or false
-  
+  config.center_on_jump = opts.center_on_jump == true
+
   -- Setup block-loop feature if key is configured
   if opts.block_loop_key then
     -- Lazy load block_loop module

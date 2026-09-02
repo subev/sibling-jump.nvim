@@ -160,15 +160,7 @@ function M.build_context(decl_node, value_node)
   })
 
   -- Position 1: End of value (closing bracket/brace/paren)
-  -- Adjust end_col to be inside the closing bracket (one position before the range end)
-  -- This ensures we land on ')' not on ';' after it
-  local _, _, end_row, end_col = value_node:range()
-  local closing_col = end_col > 0 and (end_col - 1) or 0
-  table.insert(positions, {
-    row = end_row + 1,
-    col = closing_col,
-    type = "closing_bracket",
-  })
+  table.insert(positions, utils.closing_position(value_node, "closing_bracket"))
 
   return {
     positions = positions,
@@ -200,26 +192,9 @@ function M.build_context_for_function(func_node)
       type = "closing_bracket",
     })
   else
-    -- JavaScript/TypeScript function: use statement_block end
-    local body = M.find_statement_block(func_node)
-    if body then
-      local _, _, end_row, end_col = body:range()
-      local closing_col = end_col > 0 and (end_col - 1) or 0
-      table.insert(positions, {
-        row = end_row + 1,
-        col = closing_col,
-        type = "closing_bracket",
-      })
-    else
-      -- Fallback: use function node's end
-      local _, _, end_row, end_col = func_node:range()
-      local closing_col = end_col > 0 and (end_col - 1) or 0
-      table.insert(positions, {
-        row = end_row + 1,
-        col = closing_col,
-        type = "closing_bracket",
-      })
-    end
+    -- JavaScript/TypeScript function: use statement_block end, falling back to the function's end
+    local body = M.find_statement_block(func_node) or func_node
+    table.insert(positions, utils.closing_position(body, "closing_bracket"))
   end
 
   return {
@@ -272,14 +247,7 @@ function M.build_context_for_type(type_decl, value_node)
   })
 
   -- Position 1: End of value (closing bracket/brace)
-  -- Adjust end_col to be inside the closing bracket
-  local _, _, end_row, end_col = value_node:range()
-  local closing_col = end_col > 0 and (end_col - 1) or 0
-  table.insert(positions, {
-    row = end_row + 1,
-    col = closing_col,
-    type = "closing_bracket",
-  })
+  table.insert(positions, utils.closing_position(value_node, "closing_bracket"))
 
   return {
     positions = positions,
