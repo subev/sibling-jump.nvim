@@ -20,8 +20,13 @@ nvim --headless -u tests/minimal_init.lua -c "luafile tests/run_block_loop_tests
 BLOCK_LOOP_EXIT=$?
 
 echo ""
+echo "Running JavaScript compatibility tests..."
+nvim --headless -u tests/minimal_init.lua -c "luafile tests/run_js_tests.lua"
+JS_EXIT=$?
+
+echo ""
 echo "===== Test Summary ====="
-if [ $MAIN_EXIT -eq 0 ] && [ $BLOCK_LOOP_EXIT -eq 0 ]; then
+if [ $MAIN_EXIT -eq 0 ] && [ $BLOCK_LOOP_EXIT -eq 0 ] && [ $JS_EXIT -eq 0 ]; then
   echo "✓ All test suites passed!"
   exit 0
 else

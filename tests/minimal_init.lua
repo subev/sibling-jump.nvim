@@ -16,6 +16,9 @@ package.path = package.path .. ";" .. plugin_root .. "/lua/?/init.lua"
 -- Enable filetype detection
 vim.cmd("filetype plugin indent on")
 
+-- Headless tests only need the parser; ftplugins that start highlighting can fail on query/parser drift.
+vim.treesitter.start = function() end
+
 -- Set some basic options for tests
 vim.opt.swapfile = false
 vim.opt.backup = false
