@@ -4,8 +4,8 @@
 
 **sibling-jump.nvim** is a Neovim plugin for context-aware code navigation using Tree-sitter.
 
-**Primary languages**: TypeScript, JavaScript, JSX, TSX, Lua  
-**Partial support**: Java, C, C++, C#, Python
+**Fixtures**: TypeScript, JavaScript, JSX, TSX, Lua, Swift, Python (extensive); Java, C, C# (basic)  
+Sibling navigation is grammar-agnostic; block-loop covers TS/JS/Lua.
 
 **Read `ARCHITECTURE.md` first** to understand the two-mode navigation system (sibling navigation vs block-loop).
 
@@ -78,7 +78,7 @@ git push origin feature/your-feature
 
 **IMPORTANT**: Write failing test BEFORE fixing bugs or adding features.
 
-1. **Add fixture** (if needed): `tests/fixtures/your_test.ts`
+1. **Add fixture** (if needed): `tests/fixtures/your_test.ts` (never point tests at `lua/` source files)
 2. **Write failing test**: In `tests/run_tests.lua` or `tests/run_block_loop_tests.lua`
    ```lua
    test("Description", function()
@@ -109,10 +109,10 @@ git push origin feature/your-feature
    print("Node type:", node:type())
    print("Parent:", parent and parent:type() or "nil")
    ```
-3. **Check if node is meaningful**:
+3. **Ask the finder what the line stands for**:
    ```lua
-   :lua local utils = require("sibling_jump.utils")
-   :lua print("Meaningful?", utils.is_meaningful_node(vim.treesitter.get_node()))
+   :lua local n, p, m = require("sibling_jump.node_finder").get_node_at_cursor(0)
+   :lua print(n and n:type(), p and p:type(), m and #m)
    ```
 4. **Remove debug prints after fixing**
 
@@ -145,15 +145,15 @@ See `ARCHITECTURE.md` → Extension Points. Basic structure:
 
 ### Adding Language Support
 
-1. Use `:InspectTree` to find node type names
-2. Add to `config.lua` MEANINGFUL_TYPES:
-   ```lua
-   -- Python
-   "function_definition",
-   "class_definition",
-   "for_statement",
-   ```
-3. Test thoroughly with fixtures
+Sibling navigation has no per-language configuration: `node_finder.lua` works from tree shape and indentation.
+To support a language or fix a construct:
+
+1. Write a fixture under `tests/fixtures/` that mirrors real code shapes (do not copy private code)
+2. For each scenario, walk forward to the boundary, press again, walk back, press again. Use `assert_walk` /
+   `assert_round_trip` in `tests/run_tests.lua`; a headless walker script over a real file is a good way to find
+   scenarios first
+3. Fix the shape rule that misfires in `node_finder.lua` (or the clause detection in a special mode). Do not add
+   node-type names
 
 ## Code Style
 

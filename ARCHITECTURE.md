@@ -9,9 +9,19 @@ Two navigation modes with different philosophies:
 
 ## Sibling Navigation
 
-### Key Insight: Context-Aware Detection
+### Key Insight: Shape, Not Names
 
-The plugin walks up the AST to find "meaningful" parent contexts, then navigates between siblings within that context.
+`node_finder.lua` never asks what a node is called. For the cursor line it collects the nodes starting there and:
+
+1. If one is a member of a list (its parent has `,` or `|` separators), navigates the list. Nested same-type lists
+   sharing a start (`A | B | C`) are flattened.
+2. Otherwise takes the innermost one that has peers. Peers are the parent's children at the same column, grouped by
+   line-leading closing tokens at a smaller column (so `if {...} else {...}` bodies are separate groups), excluding
+   the parent's header row (`def name`). For a line of a chained expression (`x.a()\n.b()` parses left-recursively
+   with every wrapper sharing one start), peers are the chain's line-leading pieces merged with the statement peers
+   of the whole chain.
+3. On a blank line or comment, offers the nearest navigable child of the container; on a lone closing token, the
+   node it closes.
 
 ```
 if (condition) {
@@ -20,12 +30,16 @@ if (condition) {
 }
 ```
 
+A lone statement in a block has no peers, so navigation stays put; a one-element list has none either, so the
+enclosing statement moves instead.
+
 ### Special Modes (Priority Order)
 
 1. **Method Chains** - Detects `.method()` patterns, navigates between methods
 2. **If-Else Chains** - Detects `if/else if/else`, treats entire chain as unit
 3. **Switch Cases** - Detects switch statements, navigates between case clauses
-4. **Fallback** - Regular sibling navigation in any context
+4. **Try/Except Chains** - Python `try/except/else/finally`, treated like an if-else chain
+5. **Fallback** - Regular sibling navigation in any context
 
 **Why priority matters:** Without it, `if/else if` would navigate between `if` and `else if` as separate statements instead of treating them as one unit.
 
@@ -33,15 +47,17 @@ if (condition) {
 
 ```
 init.lua           - Public API, orchestrates navigation
-config.lua         - Static configuration (meaningful node types)
+config.lua         - Skip lists only (comment delimiters, punctuation)
 node_finder.lua    - Walks AST to find navigation node + parent
 navigation.lua     - Finds sibling nodes
 positioning.lua    - Places cursor on sibling
-utils.lua          - Shared helpers
+handlers.lua       - Whitespace/comment markers and backward entry into if/switch
+utils.lua          - Shared helpers, including the single node lookup `get_node_at`
 special_modes/     - Priority-ordered special navigation patterns
   ├── method_chains.lua
   ├── if_else_chains.lua
-  └── switch_cases.lua
+  ├── switch_cases.lua
+  └── try_except_chains.lua
 ```
 
 **Data flow:** `init` → `node_finder` → check special modes → `navigation` → `positioning`
@@ -183,7 +199,7 @@ Without these checks, navigation would fail or jump to wrong positions in Lua co
 ## Common Pitfalls
 
 1. **0-indexed vs 1-indexed**: TreeSitter uses 0-indexed positions, Neovim API uses 1-indexed
-2. **Node types vary by language**: Check `config.lua` MEANINGFUL_TYPES when adding language support
+2. **Node types vary by language**: sibling navigation must not depend on them; block-loop still does (TS/JS/Lua)
 3. **Priority matters**: Wrong handler order = wrong navigation behavior
 4. **Column matching**: Use ranges, not exact match, for cursor positions (users won't be perfectly aligned)
 

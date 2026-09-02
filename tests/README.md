@@ -17,10 +17,17 @@ The `fixtures/` directory contains sample files used for testing:
 - **lua_statements.lua** - Basic Lua statement navigation (L5→L6→L7)
 - **lua_function.lua** - Complex function with nested if/else blocks
 
+### Swift
+- **swift_reader.swift** - SwiftUI-style screen: members, enum cases, switch entries, modifier chains, closures,
+  guard, do/catch. Every scenario is a bidirectional walk with extra presses at both boundaries
+  (`assert_walk` / `assert_round_trip` in `run_tests.lua`)
+- **swift_edge.swift** - column-zero comment inside a body, modifier chain inside a declaration
+
 ### Multi-Language (Basic Coverage)
 - **Test.java** - Java local variable declarations
 - **test.c** - C declarations and statements
 - **test.cs** - C# local declarations
+- **python_statements.py** - Python statements, tuple unpacking, try/except
 
 ## Running Tests
 
@@ -31,12 +38,19 @@ cd /path/to/sibling-jump.nvim
 bash tests/test_runner.sh
 ```
 
-Or directly:
+Or one suite at a time:
 
 ```bash
 cd /path/to/sibling-jump.nvim
-nvim --headless -c "luafile tests/run_tests.lua"
+nvim --headless -u tests/minimal_init.lua -c "luafile tests/run_tests.lua"             # sibling navigation
+nvim --headless -u tests/minimal_init.lua -c "luafile tests/run_block_loop_tests.lua"  # block-loop
+nvim --headless -u tests/minimal_init.lua -c "luafile tests/run_js_tests.lua"          # JS fixtures converted from TS via convert_ts_to_js.sh
 ```
+
+`minimal_init.lua` disables Tree-sitter highlighting: headless tests only need the parser, and ftplugins that start
+highlighting fail on Neovim/parser query drift.
+
+Tests must use files under `tests/fixtures/`, never the plugin's own source files: source edits shift line numbers.
 
 ### Why Not Plenary?
 
@@ -46,7 +60,7 @@ Our direct test runner (`run_tests.lua`) bypasses plenary and tests directly in 
 
 ## Test Coverage
 
-### ✅ All 121 Tests Pass
+### Covered scenarios (see the test names for the full list)
 
 1. **TypeScript Type Properties**
    - ✅ Forward navigation (L4→L5)

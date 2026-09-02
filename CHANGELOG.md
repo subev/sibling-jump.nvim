@@ -1,4 +1,35 @@
-# Changelog: statement_jump.lua
+# Changelog
+
+## 2026-09-02 - Grammar-agnostic sibling navigation
+
+### Issue
+Sibling navigation decided what a line stands for from node-type whitelists (`MEANINGFUL_TYPES`, `CONTAINER_TYPES`,
+`LIST_CONTAINERS`). Every grammar names things differently, so a new language only worked where its names happened to
+match. In Swift a `let` inside a method walked up to `function_declaration` and jumped to the next method.
+
+### Solution
+`node_finder.lua` now decides by tree shape and position only:
+
+- Members of a list (a parent with `,`/`|` separators) navigate the list.
+- Otherwise the innermost node starting on the cursor line that has peers: children of its parent at the same
+  column, grouped by closing tokens so the two bodies of an `if` never count as peers; or, for a line of a chained
+  expression, the chain's lines merged with the chain's statement peers.
+- Blank lines and comments offer the nearest navigable child of the enclosing container.
+- A lone closing token stands for the node it closes.
+
+The whitelists are gone. Special modes detect `else` and `catch` clauses by shape too (Swift's `else` node,
+`do`/`catch`). `utils.get_node_at` uses a one-character range: the zero-width lookup missed Swift keywords.
+
+### Behavior changes
+- A one-element list (`foo(x)`, `[1]`, `import { a }`) moves the enclosing statement instead of being a no-op.
+- Python `a, b = ...` navigates the unpacked names, like TS destructuring.
+- Lines of a chained expression are steps between the statement and the next one; entering such a statement from
+  below lands on its last line.
+
+### Tests
+`tests/fixtures/swift_reader.swift` with 34 bidirectional Swift scenarios that also press again at each boundary.
+Tests no longer use plugin source files as fixtures.
+
 
 ## 2025-12-31 - Fix: Leading Whitespace Navigation
 

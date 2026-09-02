@@ -9,7 +9,7 @@ https://github.com/user-attachments/assets/62c59d9a-8593-49b2-b124-1e547c2853cd
 - **Context-aware navigation**: Jumps between meaningful code units (statements, properties, array elements, etc.)
 - **Block-loop** (separate keybinding): Cycle through a block's structural boundaries (start → branches → end → back to start)
 - **Visual mode block selection**: Select entire blocks with block-loop in visual mode
-- **Multi-language support**: Works with TypeScript, JavaScript, JSX, TSX, Lua, Java, C, C#, Python, and more
+- **Any Tree-sitter grammar**: navigation units are found by tree shape and indentation, not by per-language node names; tested with TypeScript, JavaScript, JSX, TSX, Lua, Python, Swift, Java, C, C#
 - **Smart boundary detection**: Prevents navigation from jumping out of context
 - **Method chain navigation**: Seamlessly navigate through method chains like `obj.foo().bar().baz()`
 - **If-else chain navigation**: Jump between if/else-if/else clauses
@@ -32,7 +32,10 @@ Jump between nodes at the same nesting level. When your cursor is on a statement
 - If-else-if chains
 - Generic type parameters
 - Union type members
-- And more!
+- Lines of a chained expression (`view.modifier()` / `.filter {}.map {}`), flowing into the next statement
+- Class/struct members, enum cases, switch entries, closure bodies in any language
+
+A list with a single element (`foo(x)`, `[1]`, `import { a }`) has no siblings, so the jump moves the enclosing statement instead. A block with a single statement never escapes.
 
 ## Block-Loop (Optional Keybinding)
 
@@ -52,25 +55,17 @@ https://github.com/user-attachments/assets/de9d8239-0e4e-4a39-8f33-0b77bca87876
 
 ## Supported Languages
 
-**sibling-jump.nvim** works with any language that has Tree-sitter support. The following languages have been tested:
+Sibling navigation does not know any language's node names: it decides what a line stands for from the shape of the
+syntax tree and the indentation, so any grammar Neovim can parse works. Tested against fixtures:
 
-### Extensively Tested
+- **TypeScript / TSX / JavaScript / JSX** (extensive)
+- **Lua** (extensive)
+- **Swift** (SwiftUI-style file: members, enum cases, switch entries, modifier chains, closures, guard, do/catch)
+- **Python**, **Java**, **C**, **C#** (basic)
 
-- **TypeScript** (.ts)
-- **TSX** (.tsx)
-- **JavaScript** (.js)
-- **JSX** (.jsx)
-- **Lua** (.lua)
+Block-loop is still driven by node names and covers TypeScript/JavaScript and Lua.
 
-### Basic Support (Lightly Tested)
-
-- **Java** (.java)
-- **C** (.c)
-- **C++** (.cpp)
-- **C#** (.cs)
-- **Python** (.py)
-
-The plugin should work with most languages out of the box. If you encounter issues with a specific language, please [open an issue](https://github.com/yourusername/sibling-jump.nvim/issues) with a minimal example.
+If a construct in your language navigates wrongly, please [open an issue](https://github.com/subev/sibling-jump.nvim/issues) with a minimal example.
 
 ## Installation
 
@@ -348,29 +343,17 @@ You can manually enable/disable sibling-jump for any buffer using these commands
 - Neovim >= 0.9.0 (requires Tree-sitter support)
 - Tree-sitter parser for your language (automatically installed for most languages)
 
-## Language Support
-
-**Primary support:**
-
-- TypeScript / JavaScript
-- TSX / JSX
-
-**Partial support:**
-
-- Python
-- Lua
-- Other languages with Tree-sitter parsers (may work, but not extensively tested)
-
 ## How It Works
 
 sibling-jump uses Neovim's Tree-sitter integration to understand your code's structure. Instead of jumping by lines or words, it jumps between meaningful syntactic units.
 
 **Sibling Navigation** (`<C-j>`/`<C-k>`):
 
-1. Finds the Tree-sitter node at your cursor
-2. Identifies the appropriate "navigation context" (e.g., are you in an object, array, statement block?)
-3. Finds the next/previous sibling node in that context
-4. Jumps to it, staying within the same level of abstraction
+1. Finds the Tree-sitter nodes that start on the cursor line
+2. If one of them is a member of a comma/pipe separated list, navigates that list
+3. Otherwise takes the innermost one that has peers: children of its parent at the same column, or the
+   lines of the chained expression it belongs to
+4. Jumps to the next/previous peer, staying within the same level of abstraction
 
 **Block-Loop** (`<C-l>` if configured):
 
@@ -433,4 +416,4 @@ Developed by [@subev](https://github.com/subev)
 
 You can develop this plugin directly in your lazy.nvim installation directory.
 
-For AI-assisted development, see [`.ai/instructions.md`](.ai/instructions.md) for comprehensive project context, architecture details, and development guidelines.
+For AI-assisted development, see [`CLAUDE.md`](CLAUDE.md) (entry point) and [`AGENTS.md`](AGENTS.md) for project context, architecture details, and development guidelines.
